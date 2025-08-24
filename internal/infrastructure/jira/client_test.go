@@ -717,11 +717,11 @@ func TestJiraClient_GetIssueTypes_ErrorCases(t *testing.T) {
 
 func TestJiraClient_createIssue_ComprehensiveTests(t *testing.T) {
 	tests := []struct {
-		name           string
-		payload        map[string]interface{}
-		serverFunc     func(w http.ResponseWriter, r *http.Request)
-		expectedError  string
-		expectSuccess  bool
+		name          string
+		payload       map[string]interface{}
+		serverFunc    func(w http.ResponseWriter, r *http.Request)
+		expectedError string
+		expectSuccess bool
 	}{
 		{
 			name: "successful_issue_creation",
@@ -880,11 +880,11 @@ func TestJiraClient_createIssue_ComprehensiveTests(t *testing.T) {
 
 func TestJiraClient_createSubtasks_ComprehensiveTests(t *testing.T) {
 	tests := []struct {
-		name           string
-		story          *entities.UserStory
-		parentKey      string
-		serverFunc     func(w http.ResponseWriter, r *http.Request)
-		expectedCalls  int
+		name            string
+		story           *entities.UserStory
+		parentKey       string
+		serverFunc      func(w http.ResponseWriter, r *http.Request)
+		expectedCalls   int
 		expectedSuccess int
 		expectedFailed  int
 	}{

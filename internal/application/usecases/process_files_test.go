@@ -268,6 +268,213 @@ func TestProcessFilesUseCase_Execute_MixedResults(t *testing.T) {
 	}
 }
 
+func TestProcessFilesUseCase_Execute_FileValidationErrors(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name            string
+		filePath        string
+		projectKey      string
+		dryRun          bool
+		validateError   error
+		readFileError   error
+		moveFileError   error
+		wantError       bool
+		wantErrorString string
+	}{
+		{
+			name:            "dry run with file validation error",
+			filePath:        "invalid.csv",
+			projectKey:      "PROJ",
+			dryRun:          true,
+			validateError:   errors.New("file has invalid format"),
+			wantError:       true,
+			wantErrorString: "file validation failed",
+		},
+		{
+			name:            "file read error after validation",
+			filePath:        "valid.csv", 
+			projectKey:      "PROJ",
+			dryRun:          false,
+			readFileError:   errors.New("permission denied"),
+			wantError:       true,
+			wantErrorString: "error reading file",
+		},
+		{
+			name:          "move file error after successful processing",
+			filePath:      "valid.csv",
+			projectKey:    "PROJ", 
+			dryRun:        false,
+			moveFileError: errors.New("target directory not writable"),
+			wantError:     false, // Should not fail completely, just add warning
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fileRepo := &mocks.MockFileRepository{}
+			jiraRepo := &mocks.MockJiraRepository{}
+			featureRepo := &mocks.MockFeatureManager{}
+
+			if tt.dryRun {
+				fileRepo.On("ValidateFile", ctx, tt.filePath).Return(tt.validateError)
+			} else {
+				// Setup full validation chain for non-dry-run
+				jiraRepo.On("TestConnection", ctx).Return(nil)
+				jiraRepo.On("ValidateProject", ctx, tt.projectKey).Return(nil)
+				jiraRepo.On("ValidateSubtaskIssueType", ctx, tt.projectKey).Return(nil)
+				jiraRepo.On("ValidateFeatureIssueType", ctx).Return(nil)
+			}
+
+			if tt.readFileError != nil {
+				fileRepo.On("ReadFile", ctx, tt.filePath).Return(nil, tt.readFileError)
+			} else if !tt.dryRun && tt.validateError == nil {
+				stories := []*entities.UserStory{fixtures.ValidUserStory1()}
+				fileRepo.On("ReadFile", ctx, tt.filePath).Return(stories, nil)
+				jiraRepo.On("CreateUserStory", ctx, stories[0], 2).Return(fixtures.SuccessProcessResult(), nil)
+				
+				if tt.moveFileError != nil {
+					fileRepo.On("MoveToProcessed", ctx, tt.filePath).Return(tt.moveFileError)
+				} else {
+					fileRepo.On("MoveToProcessed", ctx, tt.filePath).Return(nil)
+				}
+			}
+
+			useCase := NewProcessFilesUseCase(fileRepo, jiraRepo, featureRepo)
+			result, err := useCase.Execute(ctx, tt.filePath, tt.projectKey, tt.dryRun)
+
+			if tt.wantError {
+				if err == nil {
+					t.Error("Execute() expected error but got none")
+				} else if !strings.Contains(err.Error(), tt.wantErrorString) {
+					t.Errorf("Execute() error = %v, want error containing %v", err, tt.wantErrorString)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Execute() unexpected error = %v", err)
+				}
+				if tt.moveFileError != nil && !strings.Contains(strings.Join(result.Errors, " "), "could not move file") {
+					t.Error("Execute() expected move file warning in result.Errors")
+				}
+			}
+
+			fileRepo.AssertExpectations(t)
+			jiraRepo.AssertExpectations(t)
+		})
+	}
+}
+
+func TestProcessFilesUseCase_ProcessAllFiles_ErrorPaths(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name                string
+		inputDir            string
+		projectKey          string
+		dryRun              bool
+		files               []string
+		getFilesError       error
+		executeError        error
+		validationError     error
+		wantError           bool
+		wantErrorString     string
+		wantResultsCount    int
+	}{
+		{
+			name:            "validation error in non-dry-run",
+			inputDir:        "/input",
+			projectKey:      "PROJ",
+			dryRun:          false,
+			validationError: errors.New("jira connection failed"),
+			wantError:       true,
+			wantErrorString: "jira connection failed",
+		},
+		{
+			name:            "get pending files error",
+			inputDir:        "/nonexistent",
+			projectKey:      "PROJ", 
+			dryRun:          true,
+			getFilesError:   errors.New("directory not found"),
+			wantError:       true,
+			wantErrorString: "error getting pending files",
+		},
+		{
+			name:            "no files found",
+			inputDir:        "/empty",
+			projectKey:      "PROJ",
+			dryRun:          true, 
+			files:           []string{},
+			wantError:       true,
+			wantErrorString: "no files found",
+		},
+		{
+			name:             "single file processing error creates error result",
+			inputDir:         "/input",
+			projectKey:       "PROJ",
+			dryRun:           true,
+			files:            []string{"file1.csv"},
+			executeError:     errors.New("file processing failed"),
+			wantError:        false, // Should not fail, but create error result
+			wantResultsCount: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fileRepo := &mocks.MockFileRepository{}
+			jiraRepo := &mocks.MockJiraRepository{}
+			featureRepo := &mocks.MockFeatureManager{}
+
+			if !tt.dryRun && tt.validationError != nil {
+				jiraRepo.On("TestConnection", ctx).Return(tt.validationError)
+			} else if !tt.dryRun {
+				jiraRepo.On("TestConnection", ctx).Return(nil)
+				jiraRepo.On("ValidateProject", ctx, tt.projectKey).Return(nil)
+				jiraRepo.On("ValidateSubtaskIssueType", ctx, tt.projectKey).Return(nil)
+				jiraRepo.On("ValidateFeatureIssueType", ctx).Return(nil)
+			}
+
+			if tt.getFilesError != nil {
+				fileRepo.On("GetPendingFiles", ctx, tt.inputDir).Return(nil, tt.getFilesError)
+			} else {
+				fileRepo.On("GetPendingFiles", ctx, tt.inputDir).Return(tt.files, nil)
+			}
+
+			// For execute error simulation - make file validation fail to trigger Execute error
+			if tt.executeError != nil && len(tt.files) > 0 {
+				fileRepo.On("ValidateFile", ctx, tt.files[0]).Return(tt.executeError)
+			}
+
+			useCase := NewProcessFilesUseCase(fileRepo, jiraRepo, featureRepo)
+			results, err := useCase.ProcessAllFiles(ctx, tt.inputDir, tt.projectKey, tt.dryRun)
+
+			if tt.wantError {
+				if err == nil {
+					t.Error("ProcessAllFiles() expected error but got none")
+				} else if !strings.Contains(err.Error(), tt.wantErrorString) {
+					t.Errorf("ProcessAllFiles() error = %v, want error containing %v", err, tt.wantErrorString)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("ProcessAllFiles() unexpected error = %v", err)
+				}
+				if tt.wantResultsCount > 0 {
+					if len(results) != tt.wantResultsCount {
+						t.Errorf("ProcessAllFiles() results count = %d, want %d", len(results), tt.wantResultsCount)
+					}
+					// Verify error result was created for failed file
+					if tt.executeError != nil && len(results) > 0 && len(results[0].Errors) == 0 {
+						t.Error("ProcessAllFiles() expected error in result but got none")
+					}
+				}
+			}
+
+			fileRepo.AssertExpectations(t)
+			jiraRepo.AssertExpectations(t)
+		})
+	}
+}
+
 func TestProcessFilesUseCase_ProcessAllFiles(t *testing.T) {
 	ctx := context.Background()
 

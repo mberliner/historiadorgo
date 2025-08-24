@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make fmt)",
+      "Bash(make vet)",
+      "Bash(make lint)",
+      "Bash(make test)",
+      "Bash(make build)",
+      "Bash(go fmt:*)",
+      "Bash(go vet:*)",
+      "Bash(go test:*)",
+      "Bash(go build:*)",
+      "Bash(go tool cover:*)",
+      "Bash(go mod tidy)",
+      "Bash(make fmt)",
+      "Bash(make vet)"
+    ]
+  }
+}

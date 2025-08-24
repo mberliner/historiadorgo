@@ -210,31 +210,80 @@ Los siguientes "agentes" están definidos como secuencias de comandos especializ
 - Reporte HTML generado
 - Identificación clara de gaps de testing
 
+### coverage-fix-agent [THRESHOLD]
+**Comando**: `coverage-fix-agent 85`
+**Propósito**: Agente que automáticamente mejora la cobertura de tests hasta alcanzar un porcentaje objetivo
+
+**Secuencia de ejecución**:
+1. Ejecutar `coverage-agent` con el threshold especificado para baseline
+2. Si la cobertura ya alcanza el objetivo, reportar éxito y terminar
+3. Identificar funciones con mayor impacto potencial para mejora (ordenadas por importancia):
+   - Funciones de lógica de negocio (domain/application) con cobertura <90%
+   - Funciones de infraestructura crítica con cobertura <threshold
+   - Funciones con mayor cantidad de líneas sin cubrir
+4. Crear tests automáticamente siguiendo estos principios:
+   - Tests unitarios para funciones puras (domain entities)
+   - Tests con mocks para casos de uso (application layer)
+   - Tests de integración para infraestructura cuando sea necesario
+   - Seguir patrones existentes de testing del proyecto
+5. Ejecutar tests iterativamente y medir progreso
+6. Parar cuando se alcance el threshold o cuando no sea posible mejorar más
+7. Generar reporte final con cobertura alcanzada y tests agregados
+
+**Priorización para máximo impacto**:
+1. **Tests de aplicación**: Casos de uso con paths de error sin cubrir
+2. **Tests de dominio**: Entidades con métodos sin tests
+3. **Tests de infraestructura**: Clientes HTTP, validaciones, edge cases
+4. **Tests de integración CLI**: Solo si el impacto es significativo (>2% ganancia)
+
+**Comportamiento**:
+- **Automático**: Crea tests sin solicitar confirmación
+- **Iterativo**: Mide cobertura después de cada grupo de tests agregados  
+- **Inteligente**: Prioriza tests con mayor impacto en cobertura
+- **Conservador**: No modifica tests existentes, solo agrega nuevos
+
+**Criterios de éxito**:
+- Cobertura total ≥ threshold especificado
+- Tests agregados siguen patrones existentes del proyecto
+- Todos los tests (nuevos y existentes) pasan
+- Reporte detallado de mejoras implementadas
+
 ### fix-agent [TIPO]
 **Comando**: `fix-agent lint` o `fix-agent tests` o `fix-agent all`
 **Propósito**: Agente de reparación automática de problemas comunes
 
 **Secuencia de ejecución**:
 Para `lint`:
-1. Ejecutar `make fmt` para formatear código
+1. Ejecutar `make fmt` para formatear código automáticamente
 2. Ejecutar `make vet` y analizar warnings
-3. Corregir problemas comunes de Go (variables no usadas, imports redundantes, etc.)
+3. Corregir problemas comunes de Go (variables no usadas, imports redundantes, etc.) automáticamente sin confirmación
 4. Re-ejecutar hasta que no haya warnings
 
 Para `tests`:
 1. Ejecutar tests y capturar fallos
 2. Analizar errores de compilación y runtime
-3. Sugerir correcciones específicas para cada fallo
-4. Aplicar fixes automáticos para problemas comunes
+3. Aplicar correcciones automáticas para problemas comunes sin solicitar confirmación
+4. Para problemas complejos, reportar análisis y sugerencias específicas
 
 Para `all`:
-1. Ejecutar ambos secuencialmente
+1. Ejecutar ambos secuencialmente de forma automática
 2. Asegurar que todas las correcciones son compatibles
+3. Proceder sin interrupciones interactivas
+
+**Comportamiento**:
+- **Automático**: Aplica fixes estándar sin preguntar
+- **Reporta**: Solo informa cambios realizados al finalizar
+- **IMPORTANTE**: Ejecuta todos los comandos directamente sin preguntar por confirmación antes de cada comando
 
 **Criterios de éxito**:
 - Sin errores de lint/format
 - Tests compilables y ejecutables
 - Código funcionalmente equivalente
+
+## Configuración de Claude Code
+- Usar auto-aprobación para comandos de agentes (make fmt, make vet, go test, etc.)
+- Los agentes deben ejecutarse sin interrupciones interactivas del usuario
+- Configurar "don't ask again" para comandos de desarrollo en este directorio
 
 ## Uso de Agentes
 
@@ -246,6 +295,7 @@ qa-agent
 build-agent  
 release-agent v1.5.0
 coverage-agent 85
+coverage-fix-agent 85
 fix-agent all
 ```
 
