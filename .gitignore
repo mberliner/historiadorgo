@@ -1,0 +1,38 @@
+# Binarios
+/bin/
+/dist/
+historiador
+historiador.exe
+
+# Archivos de configuración sensibles
+.env
+*.log
+
+# Archivos de desarrollo
+*.tmp
+*.bak
+*.swp
+*.swo
+*~
+
+# Directorios de desarrollo
+vendor/
+.vscode/
+.idea/
+
+# Directorios no versionados
+entrada/
+procesados/
+logs/
+
+# Archivos específicos de Go
+# Si usas go mod vendor
+vendor/
+
+# Archivos de test
+coverage.out
+*.test
+
+# Archivos del SO
+.DS_Store
+Thumbs.db
