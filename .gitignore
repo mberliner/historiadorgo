@@ -30,8 +30,9 @@ logs/
 vendor/
 
 # Archivos de test
-coverage.out
+coverage*
 *.test
+*.out
 
 # Archivos del SO
 .DS_Store
