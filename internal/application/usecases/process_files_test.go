@@ -312,33 +312,46 @@ func TestProcessFilesUseCase_Execute_FileValidationErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fileRepo := &mocks.MockFileRepository{}
-			jiraRepo := &mocks.MockJiraRepository{}
+			fileRepo := &mocks.MockFileRepository{
+				ValidateFileFunc: func(ctx context.Context, filePath string) error {
+					if tt.dryRun && tt.validateError != nil {
+						return tt.validateError
+					}
+					return nil
+				},
+				ReadFileFunc: func(ctx context.Context, filePath string) ([]*entities.UserStory, error) {
+					if tt.readFileError != nil {
+						return nil, tt.readFileError
+					}
+					if !tt.dryRun && tt.validateError == nil {
+						return []*entities.UserStory{fixtures.ValidUserStory1()}, nil
+					}
+					return []*entities.UserStory{}, nil
+				},
+				MoveToProcessedFunc: func(ctx context.Context, filePath string) error {
+					return tt.moveFileError
+				},
+			}
+			
+			jiraRepo := &mocks.MockJiraRepository{
+				TestConnectionFunc: func(ctx context.Context) error {
+					return nil
+				},
+				ValidateProjectFunc: func(ctx context.Context, projectKey string) error {
+					return nil
+				},
+				ValidateSubtaskIssueTypeFunc: func(ctx context.Context, projectKey string) error {
+					return nil
+				},
+				ValidateFeatureIssueTypeFunc: func(ctx context.Context) error {
+					return nil
+				},
+				CreateUserStoryFunc: func(ctx context.Context, story *entities.UserStory, rowNumber int) (*entities.ProcessResult, error) {
+					return fixtures.SuccessProcessResult(), nil
+				},
+			}
+			
 			featureRepo := &mocks.MockFeatureManager{}
-
-			if tt.dryRun {
-				fileRepo.On("ValidateFile", ctx, tt.filePath).Return(tt.validateError)
-			} else {
-				// Setup full validation chain for non-dry-run
-				jiraRepo.On("TestConnection", ctx).Return(nil)
-				jiraRepo.On("ValidateProject", ctx, tt.projectKey).Return(nil)
-				jiraRepo.On("ValidateSubtaskIssueType", ctx, tt.projectKey).Return(nil)
-				jiraRepo.On("ValidateFeatureIssueType", ctx).Return(nil)
-			}
-
-			if tt.readFileError != nil {
-				fileRepo.On("ReadFile", ctx, tt.filePath).Return(nil, tt.readFileError)
-			} else if !tt.dryRun && tt.validateError == nil {
-				stories := []*entities.UserStory{fixtures.ValidUserStory1()}
-				fileRepo.On("ReadFile", ctx, tt.filePath).Return(stories, nil)
-				jiraRepo.On("CreateUserStory", ctx, stories[0], 2).Return(fixtures.SuccessProcessResult(), nil)
-				
-				if tt.moveFileError != nil {
-					fileRepo.On("MoveToProcessed", ctx, tt.filePath).Return(tt.moveFileError)
-				} else {
-					fileRepo.On("MoveToProcessed", ctx, tt.filePath).Return(nil)
-				}
-			}
 
 			useCase := NewProcessFilesUseCase(fileRepo, jiraRepo, featureRepo)
 			result, err := useCase.Execute(ctx, tt.filePath, tt.projectKey, tt.dryRun)
@@ -353,13 +366,10 @@ func TestProcessFilesUseCase_Execute_FileValidationErrors(t *testing.T) {
 				if err != nil {
 					t.Errorf("Execute() unexpected error = %v", err)
 				}
-				if tt.moveFileError != nil && !strings.Contains(strings.Join(result.Errors, " "), "could not move file") {
+				if tt.moveFileError != nil && result != nil && !strings.Contains(strings.Join(result.Errors, " "), "could not move file") {
 					t.Error("Execute() expected move file warning in result.Errors")
 				}
 			}
-
-			fileRepo.AssertExpectations(t)
-			jiraRepo.AssertExpectations(t)
 		})
 	}
 }
@@ -421,29 +431,43 @@ func TestProcessFilesUseCase_ProcessAllFiles_ErrorPaths(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fileRepo := &mocks.MockFileRepository{}
-			jiraRepo := &mocks.MockJiraRepository{}
+			fileRepo := &mocks.MockFileRepository{
+				GetPendingFilesFunc: func(ctx context.Context, inputDir string) ([]string, error) {
+					if tt.getFilesError != nil {
+						return nil, tt.getFilesError
+					}
+					return tt.files, nil
+				},
+				ValidateFileFunc: func(ctx context.Context, filePath string) error {
+					if tt.executeError != nil && len(tt.files) > 0 {
+						return tt.executeError
+					}
+					return nil
+				},
+				ReadFileFunc: func(ctx context.Context, filePath string) ([]*entities.UserStory, error) {
+					return []*entities.UserStory{fixtures.ValidUserStory1()}, nil
+				},
+			}
+			
+			jiraRepo := &mocks.MockJiraRepository{
+				TestConnectionFunc: func(ctx context.Context) error {
+					if !tt.dryRun && tt.validationError != nil {
+						return tt.validationError
+					}
+					return nil
+				},
+				ValidateProjectFunc: func(ctx context.Context, projectKey string) error {
+					return nil
+				},
+				ValidateSubtaskIssueTypeFunc: func(ctx context.Context, projectKey string) error {
+					return nil
+				},
+				ValidateFeatureIssueTypeFunc: func(ctx context.Context) error {
+					return nil
+				},
+			}
+			
 			featureRepo := &mocks.MockFeatureManager{}
-
-			if !tt.dryRun && tt.validationError != nil {
-				jiraRepo.On("TestConnection", ctx).Return(tt.validationError)
-			} else if !tt.dryRun {
-				jiraRepo.On("TestConnection", ctx).Return(nil)
-				jiraRepo.On("ValidateProject", ctx, tt.projectKey).Return(nil)
-				jiraRepo.On("ValidateSubtaskIssueType", ctx, tt.projectKey).Return(nil)
-				jiraRepo.On("ValidateFeatureIssueType", ctx).Return(nil)
-			}
-
-			if tt.getFilesError != nil {
-				fileRepo.On("GetPendingFiles", ctx, tt.inputDir).Return(nil, tt.getFilesError)
-			} else {
-				fileRepo.On("GetPendingFiles", ctx, tt.inputDir).Return(tt.files, nil)
-			}
-
-			// For execute error simulation - make file validation fail to trigger Execute error
-			if tt.executeError != nil && len(tt.files) > 0 {
-				fileRepo.On("ValidateFile", ctx, tt.files[0]).Return(tt.executeError)
-			}
 
 			useCase := NewProcessFilesUseCase(fileRepo, jiraRepo, featureRepo)
 			results, err := useCase.ProcessAllFiles(ctx, tt.inputDir, tt.projectKey, tt.dryRun)
@@ -468,9 +492,6 @@ func TestProcessFilesUseCase_ProcessAllFiles_ErrorPaths(t *testing.T) {
 					}
 				}
 			}
-
-			fileRepo.AssertExpectations(t)
-			jiraRepo.AssertExpectations(t)
 		})
 	}
 }

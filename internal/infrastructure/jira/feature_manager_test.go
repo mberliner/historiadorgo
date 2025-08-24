@@ -349,6 +349,193 @@ func TestFeatureManager_ValidateFeatureRequiredFields(t *testing.T) {
 			expectedFields: 0,
 			expectError:    true,
 		},
+		{
+			name: "malformed_json_response",
+			mockResponse: map[string]interface{}{
+				"projects": "invalid_json_structure",
+			},
+			statusCode:     http.StatusOK,
+			expectedFields: 0,
+			expectError:    true,
+		},
+		{
+			name: "empty_projects_array",
+			mockResponse: map[string]interface{}{
+				"projects": []interface{}{},
+			},
+			statusCode:     http.StatusOK,
+			expectedFields: 0,
+			expectError:    true,
+		},
+		{
+			name: "no_projects_field",
+			mockResponse: map[string]interface{}{
+				"other_field": "value",
+			},
+			statusCode:     http.StatusOK,
+			expectedFields: 0,
+			expectError:    true,
+		},
+		{
+			name: "project_without_issuetypes",
+			mockResponse: map[string]interface{}{
+				"projects": []interface{}{
+					map[string]interface{}{
+						"key": "PROJ",
+						"name": "Test Project",
+					},
+				},
+			},
+			statusCode:     http.StatusOK,
+			expectedFields: 0,
+			expectError:    true,
+		},
+		{
+			name: "feature_issuetype_not_found",
+			mockResponse: map[string]interface{}{
+				"projects": []interface{}{
+					map[string]interface{}{
+						"issuetypes": []interface{}{
+							map[string]interface{}{
+								"name": "Story",
+								"fields": map[string]interface{}{
+									"priority": map[string]interface{}{
+										"required": true,
+										"name":     "Priority",
+									},
+								},
+							},
+							map[string]interface{}{
+								"name": "Bug",
+								"fields": map[string]interface{}{
+									"severity": map[string]interface{}{
+										"required": true,
+										"name":     "Severity",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			statusCode:     http.StatusOK,
+			expectedFields: 0,
+			expectError:    true,
+		},
+		{
+			name: "feature_issuetype_without_fields",
+			mockResponse: map[string]interface{}{
+				"projects": []interface{}{
+					map[string]interface{}{
+						"issuetypes": []interface{}{
+							map[string]interface{}{
+								"name": "Feature",
+							},
+						},
+					},
+				},
+			},
+			statusCode:     http.StatusOK,
+			expectedFields: 0,
+			expectError:    false,
+		},
+		{
+			name: "fields_without_name",
+			mockResponse: map[string]interface{}{
+				"projects": []interface{}{
+					map[string]interface{}{
+						"issuetypes": []interface{}{
+							map[string]interface{}{
+								"name": "Feature",
+								"fields": map[string]interface{}{
+									"customfield_10001": map[string]interface{}{
+										"required": true,
+									},
+									"customfield_10002": map[string]interface{}{
+										"required": true,
+										"name":     "Named Field",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			statusCode:     http.StatusOK,
+			expectedFields: 2, // uno sin name, otro con name
+			expectError:    false,
+		},
+		{
+			name: "mixed_required_and_optional_fields_excluding_defaults",
+			mockResponse: map[string]interface{}{
+				"projects": []interface{}{
+					map[string]interface{}{
+						"issuetypes": []interface{}{
+							map[string]interface{}{
+								"name": "Feature",
+								"fields": map[string]interface{}{
+									"customfield_10001": map[string]interface{}{
+										"required": true,
+										"name":     "Epic Link",
+									},
+									"customfield_10002": map[string]interface{}{
+										"required": false,
+										"name":     "Optional Field",
+									},
+									"project": map[string]interface{}{
+										"required": true,
+										"name":     "Project",
+									},
+									"issuetype": map[string]interface{}{
+										"required": true,
+										"name":     "Issue Type",
+									},
+									"summary": map[string]interface{}{
+										"required": true,
+										"name":     "Summary",
+									},
+									"description": map[string]interface{}{
+										"required": true,
+										"name":     "Description",
+									},
+									"customfield_10003": map[string]interface{}{
+										"required": true,
+										"name":     "Another Required Field",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			statusCode:     http.StatusOK,
+			expectedFields: 2, // Epic Link y Another Required Field (project, issuetype, summary, description se excluyen)
+			expectError:    false,
+		},
+		{
+			name: "field_data_not_map",
+			mockResponse: map[string]interface{}{
+				"projects": []interface{}{
+					map[string]interface{}{
+						"issuetypes": []interface{}{
+							map[string]interface{}{
+								"name": "Feature",
+								"fields": map[string]interface{}{
+									"customfield_10001": "invalid_field_data",
+									"customfield_10002": map[string]interface{}{
+										"required": true,
+										"name":     "Valid Field",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			statusCode:     http.StatusOK,
+			expectedFields: 1, // solo el válido
+			expectError:    false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -376,6 +563,157 @@ func TestFeatureManager_ValidateFeatureRequiredFields(t *testing.T) {
 				if len(fields) != tt.expectedFields {
 					t.Errorf("Expected %d fields, got %d", tt.expectedFields, len(fields))
 				}
+			}
+		})
+	}
+}
+
+func TestFeatureManager_ValidateFeatureRequiredFields_NetworkErrors(t *testing.T) {
+	fm, server := createTestFeatureManager()
+	defer server.Close()
+
+	t.Run("invalid_json_response", func(t *testing.T) {
+		server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.Contains(r.URL.Path, "/rest/api/3/issue/createmeta") {
+				w.WriteHeader(http.StatusOK)
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(`{invalid json`))
+			}
+		})
+
+		fields, err := fm.ValidateFeatureRequiredFields(context.Background(), "PROJ")
+
+		if err == nil {
+			t.Error("Expected error for invalid JSON, got none")
+		}
+		if fields != nil {
+			t.Error("Expected nil fields on error")
+		}
+	})
+
+	t.Run("context_cancelled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // Cancel immediately
+
+		fields, err := fm.ValidateFeatureRequiredFields(ctx, "PROJ")
+
+		if err == nil {
+			t.Error("Expected error for cancelled context, got none")
+		}
+		if fields != nil {
+			t.Error("Expected nil fields on error")
+		}
+	})
+}
+
+func TestFeatureManager_ValidateFeatureRequiredFields_EdgeCases(t *testing.T) {
+	fm, server := createTestFeatureManager()
+	defer server.Close()
+
+	tests := []struct {
+		name           string
+		mockResponse   map[string]interface{}
+		expectedFields int
+	}{
+		{
+			name: "required_field_with_no_bool_value",
+			mockResponse: map[string]interface{}{
+				"projects": []interface{}{
+					map[string]interface{}{
+						"issuetypes": []interface{}{
+							map[string]interface{}{
+								"name": "Feature",
+								"fields": map[string]interface{}{
+									"customfield_10001": map[string]interface{}{
+										"required": "true", // string instead of bool
+										"name":     "Should be ignored",
+									},
+									"customfield_10002": map[string]interface{}{
+										"required": true,
+										"name":     "Should be included",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedFields: 1, // solo el que tiene required: true (bool)
+		},
+		{
+			name: "issue_type_name_type_assertion_failure",
+			mockResponse: map[string]interface{}{
+				"projects": []interface{}{
+					map[string]interface{}{
+						"issuetypes": []interface{}{
+							map[string]interface{}{
+								"name": 123, // number instead of string
+								"fields": map[string]interface{}{
+									"customfield_10001": map[string]interface{}{
+										"required": true,
+										"name":     "Should be ignored",
+									},
+								},
+							},
+							map[string]interface{}{
+								"name": "Feature",
+								"fields": map[string]interface{}{
+									"customfield_10002": map[string]interface{}{
+										"required": true,
+										"name":     "Should be included",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedFields: 1, // solo del issuetype válido
+		},
+		{
+			name: "field_name_type_assertion_failure",
+			mockResponse: map[string]interface{}{
+				"projects": []interface{}{
+					map[string]interface{}{
+						"issuetypes": []interface{}{
+							map[string]interface{}{
+								"name": "Feature",
+								"fields": map[string]interface{}{
+									"customfield_10001": map[string]interface{}{
+										"required": true,
+										"name":     123, // number instead of string
+									},
+									"customfield_10002": map[string]interface{}{
+										"required": true,
+										"name":     "Valid Name",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedFields: 2, // uno con fieldKey, otro con name válido
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if strings.Contains(r.URL.Path, "/rest/api/3/issue/createmeta") {
+					w.WriteHeader(http.StatusOK)
+					w.Header().Set("Content-Type", "application/json")
+					json.NewEncoder(w).Encode(tt.mockResponse)
+				}
+			})
+
+			fields, err := fm.ValidateFeatureRequiredFields(context.Background(), "PROJ")
+
+			if err != nil {
+				t.Errorf("Expected no error, got: %v", err)
+			}
+			if len(fields) != tt.expectedFields {
+				t.Errorf("Expected %d fields, got %d. Fields: %v", tt.expectedFields, len(fields), fields)
 			}
 		})
 	}
