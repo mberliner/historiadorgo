@@ -327,3 +327,119 @@ func TestValidateFileUseCase_Statistics(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateFileUseCase_GeneratePreview_EdgeCases(t *testing.T) {
+	mockFileRepo := &mocks.MockFileRepository{}
+	mockJiraRepo := &mocks.MockJiraRepository{}
+	uc := NewValidateFileUseCase(mockFileRepo, mockJiraRepo)
+
+	tests := []struct {
+		name     string
+		stories  []*entities.UserStory
+		maxRows  int
+		expected []string // strings that should be in the preview
+	}{
+		{
+			name: "long_titulo_truncation",
+			stories: []*entities.UserStory{
+				{
+					Titulo:      "Este es un título muy largo que debería ser truncado porque excede el límite",
+					Descripcion: "Descripción",
+					Subtareas:   []string{"Subtarea1", "Subtarea2"},
+					Parent:      "PROJ-123",
+				},
+			},
+			maxRows:  5,
+			expected: []string{"Este es un título muy la...", "Descripción"},
+		},
+		{
+			name: "long_descripcion_truncation",
+			stories: []*entities.UserStory{
+				{
+					Titulo:      "Título corto",
+					Descripcion: "Esta es una descripción muy larga que definitivamente debería ser truncada porque excede significativamente el límite de caracteres",
+					Subtareas:   []string{"Subtarea1"},
+					Parent:      "PROJ-123",
+				},
+			},
+			maxRows:  5,
+			expected: []string{"Título corto", "Esta es una descripción muy larga que defini..."},
+		},
+		{
+			name: "many_subtasks_truncation",
+			stories: []*entities.UserStory{
+				{
+					Titulo:      "Título",
+					Descripcion: "Descripción",
+					Subtareas:   []string{"Sub1", "Sub2", "Sub3", "Sub4", "Sub5"},
+					Parent:      "PROJ-123",
+				},
+			},
+			maxRows:  5,
+			expected: []string{"5 subtareas"},
+		},
+		{
+			name: "long_parent_truncation",
+			stories: []*entities.UserStory{
+				{
+					Titulo:      "Título",
+					Descripcion: "Descripción", 
+					Subtareas:   []string{"Subtarea1"},
+					Parent:      "PROYECTO-CON-NOMBRE-MUY-LARGO-123",
+				},
+			},
+			maxRows:  5,
+			expected: []string{"PROYECTO-C..."},
+		},
+		{
+			name: "max_rows_limitation",
+			stories: []*entities.UserStory{
+				{Titulo: "Historia1", Descripcion: "Desc1", Subtareas: []string{"Sub1"}, Parent: "PROJ-1"},
+				{Titulo: "Historia2", Descripcion: "Desc2", Subtareas: []string{"Sub2"}, Parent: "PROJ-2"},
+				{Titulo: "Historia3", Descripcion: "Desc3", Subtareas: []string{"Sub3"}, Parent: "PROJ-3"},
+			},
+			maxRows:  2,
+			expected: []string{"Historia1", "Historia2"}, // Historia3 shouldn't appear
+		},
+		{
+			name: "empty_stories",
+			stories: []*entities.UserStory{},
+			maxRows: 5,
+			expected: []string{"TITULO", "DESCRIPCION", "SUBTAREAS", "PARENT"}, // Just headers
+		},
+		{
+			name: "zero_max_rows",
+			stories: []*entities.UserStory{
+				{Titulo: "Historia1", Descripcion: "Desc1", Subtareas: []string{"Sub1"}, Parent: "PROJ-1"},
+			},
+			maxRows:  0,
+			expected: []string{"TITULO", "DESCRIPCION"}, // Just headers, no data rows
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			preview := uc.generatePreview(tt.stories, tt.maxRows)
+			
+			for _, expectedString := range tt.expected {
+				if !strings.Contains(preview, expectedString) {
+					t.Errorf("Expected preview to contain %q, but it didn't. Preview: %s", expectedString, preview)
+				}
+			}
+			
+			// For max_rows_limitation test, ensure Historia3 doesn't appear
+			if tt.name == "max_rows_limitation" {
+				if strings.Contains(preview, "Historia3") {
+					t.Errorf("Preview should not contain Historia3 due to maxRows limit")
+				}
+			}
+			
+			// For zero_max_rows test, ensure no data rows appear
+			if tt.name == "zero_max_rows" {
+				if strings.Contains(preview, "Historia1") {
+					t.Errorf("Preview should not contain Historia1 due to zero maxRows")
+				}
+			}
+		})
+	}
+}
