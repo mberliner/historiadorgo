@@ -381,7 +381,7 @@ func TestFeatureManager_ValidateFeatureRequiredFields(t *testing.T) {
 			mockResponse: map[string]interface{}{
 				"projects": []interface{}{
 					map[string]interface{}{
-						"key": "PROJ",
+						"key":  "PROJ",
 						"name": "Test Project",
 					},
 				},

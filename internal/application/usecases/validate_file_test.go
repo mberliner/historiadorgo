@@ -383,7 +383,7 @@ func TestValidateFileUseCase_GeneratePreview_EdgeCases(t *testing.T) {
 			stories: []*entities.UserStory{
 				{
 					Titulo:      "Título",
-					Descripcion: "Descripción", 
+					Descripcion: "Descripción",
 					Subtareas:   []string{"Subtarea1"},
 					Parent:      "PROYECTO-CON-NOMBRE-MUY-LARGO-123",
 				},
@@ -402,9 +402,9 @@ func TestValidateFileUseCase_GeneratePreview_EdgeCases(t *testing.T) {
 			expected: []string{"Historia1", "Historia2"}, // Historia3 shouldn't appear
 		},
 		{
-			name: "empty_stories",
-			stories: []*entities.UserStory{},
-			maxRows: 5,
+			name:     "empty_stories",
+			stories:  []*entities.UserStory{},
+			maxRows:  5,
 			expected: []string{"TITULO", "DESCRIPCION", "SUBTAREAS", "PARENT"}, // Just headers
 		},
 		{
@@ -420,20 +420,20 @@ func TestValidateFileUseCase_GeneratePreview_EdgeCases(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			preview := uc.generatePreview(tt.stories, tt.maxRows)
-			
+
 			for _, expectedString := range tt.expected {
 				if !strings.Contains(preview, expectedString) {
 					t.Errorf("Expected preview to contain %q, but it didn't. Preview: %s", expectedString, preview)
 				}
 			}
-			
+
 			// For max_rows_limitation test, ensure Historia3 doesn't appear
 			if tt.name == "max_rows_limitation" {
 				if strings.Contains(preview, "Historia3") {
 					t.Errorf("Preview should not contain Historia3 due to maxRows limit")
 				}
 			}
-			
+
 			// For zero_max_rows test, ensure no data rows appear
 			if tt.name == "zero_max_rows" {
 				if strings.Contains(preview, "Historia1") {

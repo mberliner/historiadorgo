@@ -34,59 +34,60 @@ type App struct {
 func TestProcessDryRun_Integration(t *testing.T) {
 	// Setup test environment
 	tempDir := t.TempDir()
-	
+
 	// Create test directories
 	inputDir := filepath.Join(tempDir, "entrada")
 	logsDir := filepath.Join(tempDir, "logs")
 	processedDir := filepath.Join(tempDir, "procesados")
-	
+
 	require.NoError(t, os.MkdirAll(inputDir, 0755))
 	require.NoError(t, os.MkdirAll(logsDir, 0755))
 	require.NoError(t, os.MkdirAll(processedDir, 0755))
-	
+
 	// Create test CSV file
 	csvContent := `titulo,descripcion,criterio_aceptacion,subtareas,parent
 Login de usuario,Como usuario quiero autenticarme en el sistema,Dado que ingreso credenciales válidas entonces accedo al sistema,Validar campos;Conectar con API;Mostrar errores de validación,
 Dashboard principal,Como usuario quiero ver mi dashboard personalizado,Dado que estoy autenticado entonces veo mi dashboard,Cargar widgets;Aplicar filtros;Mostrar métricas,
 Gestión de perfil,Como usuario quiero gestionar mi perfil,Dado que accedo a perfil entonces puedo editarlo,Editar datos;Subir avatar;Cambiar contraseña,AUTH-123`
-	
+
 	csvFile := filepath.Join(inputDir, "test_stories.csv")
 	require.NoError(t, os.WriteFile(csvFile, []byte(csvContent), 0644))
-	
+
 	// Setup environment variables
 	originalEnv := setupTestEnvironment(t, tempDir)
 	defer restoreEnvironment(originalEnv)
-	
+
 	// Create app with real dependencies but mocked Jira for safety
 	app, err := createTestApp(tempDir)
 	require.NoError(t, err)
-	
+	defer app.logger.Close() // Ensure logger is closed to release file handles
+
 	// Execute dry run processing
 	ctx := context.Background()
 	err = app.runProcess(ctx, "TEST-PROJ", csvFile, true)
-	
+
 	// Verify no error occurred
 	assert.NoError(t, err)
-	
+
 	// Verify log file was created
 	logFiles, err := filepath.Glob(filepath.Join(logsDir, "*.log"))
 	require.NoError(t, err)
 	require.Len(t, logFiles, 1)
-	
+
 	// Verify log content contains processing information
 	logContent, err := os.ReadFile(logFiles[0])
 	require.NoError(t, err)
 	logStr := string(logContent)
-	
+
 	// Verify command execution was logged
 	assert.Contains(t, logStr, "process")
 	assert.Contains(t, logStr, "TEST-PROJ")
 	assert.Contains(t, logStr, "dry_run:true")
-	
+
 	// Verify the CSV file exists and was not processed (moved)
 	_, err = os.Stat(csvFile)
 	assert.NoError(t, err, "CSV file should still exist after dry-run")
-	
+
 	// Verify file was NOT moved to processed (since it's dry run)
 	processedFiles, err := filepath.Glob(filepath.Join(processedDir, "*"))
 	require.NoError(t, err)
@@ -95,29 +96,29 @@ Gestión de perfil,Como usuario quiero gestionar mi perfil,Dado que accedo a per
 
 func TestValidateCommand_Integration(t *testing.T) {
 	tempDir := t.TempDir()
-	
+
 	tests := []struct {
-		name           string
-		csvContent     string
-		expectError    bool
+		name              string
+		csvContent        string
+		expectError       bool
 		expectedInPreview []string
 	}{
 		{
 			name: "valid_file_with_subtasks",
 			csvContent: `titulo,descripcion,criterio_aceptacion,subtareas,parent
 Historia válida,Descripción de prueba,Criterio de aceptación,Subtarea1;Subtarea2,PROJ-123`,
-			expectError: false,
+			expectError:       false,
 			expectedInPreview: []string{"Historia válida"},
 		},
 		{
 			name: "file_with_validation_errors",
 			csvContent: `titulo,descripcion,criterio_aceptacion,subtareas,parent
 ,Descripción sin título,,Subtarea muy larga que excede los 255 caracteres permitidos y debería ser marcada como inválida porque supera el límite establecido para las subtareas en el sistema y esto puede causar problemas durante la creación,`,
-			expectError: true,
+			expectError:       true,
 			expectedInPreview: []string{},
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Setup test environment
@@ -125,39 +126,40 @@ Historia válida,Descripción de prueba,Criterio de aceptación,Subtarea1;Subtar
 			logsDir := filepath.Join(tempDir, "logs_"+tt.name)
 			require.NoError(t, os.MkdirAll(inputDir, 0755))
 			require.NoError(t, os.MkdirAll(logsDir, 0755))
-			
+
 			// Create test CSV
 			csvFile := filepath.Join(inputDir, "validate_test.csv")
 			require.NoError(t, os.WriteFile(csvFile, []byte(tt.csvContent), 0644))
-			
+
 			// Setup environment
 			originalEnv := setupTestEnvironment(t, tempDir)
 			defer restoreEnvironment(originalEnv)
-			
+
 			// Create app
 			app, err := createTestApp(tempDir)
 			require.NoError(t, err)
-			
+			defer app.logger.Close() // Ensure logger is closed to release file handles
+
 			// Execute validation
 			ctx := context.Background()
 			err = app.runValidate(ctx, "", csvFile, 5)
-			
+
 			if tt.expectError {
 				assert.Error(t, err)
 			} else {
 				assert.NoError(t, err)
 			}
-			
+
 			// Check if log files were created (validation might not always create logs)
 			logFiles, err := filepath.Glob(filepath.Join(logsDir, "*.log"))
 			require.NoError(t, err)
-			
+
 			// If log files exist, verify they contain some expected content
 			if len(logFiles) > 0 {
 				logContent, err := os.ReadFile(logFiles[0])
 				require.NoError(t, err)
 				logStr := string(logContent)
-				
+
 				// Verify basic validation logging occurred
 				assert.Contains(t, logStr, "validate", "Expected validation command to be logged")
 			}
@@ -171,7 +173,7 @@ func TestProcessMultipleFiles_Integration(t *testing.T) {
 	logsDir := filepath.Join(tempDir, "logs")
 	require.NoError(t, os.MkdirAll(inputDir, 0755))
 	require.NoError(t, os.MkdirAll(logsDir, 0755))
-	
+
 	// Create multiple CSV files
 	files := []struct {
 		name    string
@@ -183,40 +185,41 @@ func TestProcessMultipleFiles_Integration(t *testing.T) {
 Historia 1,Descripción 1,Criterio 1,Sub1;Sub2,`,
 		},
 		{
-			name: "stories2.csv", 
+			name: "stories2.csv",
 			content: `titulo,descripcion,criterio_aceptacion,subtareas,parent
 Historia 2,Descripción 2,Criterio 2,Sub3,PROJ-456`,
 		},
 	}
-	
+
 	for _, file := range files {
 		filePath := filepath.Join(inputDir, file.name)
 		require.NoError(t, os.WriteFile(filePath, []byte(file.content), 0644))
 	}
-	
+
 	// Setup environment
 	originalEnv := setupTestEnvironment(t, tempDir)
 	defer restoreEnvironment(originalEnv)
-	
+
 	// Create app
 	app, err := createTestApp(tempDir)
 	require.NoError(t, err)
-	
+	defer app.logger.Close() // Ensure logger is closed to release file handles
+
 	// Execute processing all files in directory (dry-run)
 	ctx := context.Background()
 	err = app.runProcess(ctx, "TEST-PROJ", "", true) // Empty file path processes all files
-	
+
 	assert.NoError(t, err)
-	
+
 	// Verify logs contain processing information
 	logFiles, err := filepath.Glob(filepath.Join(logsDir, "*.log"))
 	require.NoError(t, err)
 	require.Len(t, logFiles, 1)
-	
+
 	logContent, err := os.ReadFile(logFiles[0])
 	require.NoError(t, err)
 	logStr := string(logContent)
-	
+
 	// Verify command execution was logged
 	assert.Contains(t, logStr, "process")
 	assert.Contains(t, logStr, "TEST-PROJ")
@@ -227,7 +230,7 @@ Historia 2,Descripción 2,Criterio 2,Sub3,PROJ-456`,
 
 func setupTestEnvironment(t *testing.T, tempDir string) map[string]string {
 	originalEnv := make(map[string]string)
-	
+
 	envVars := map[string]string{
 		"JIRA_URL":            "https://test-integration.atlassian.net",
 		"JIRA_EMAIL":          "integration-test@example.com",
@@ -239,12 +242,12 @@ func setupTestEnvironment(t *testing.T, tempDir string) map[string]string {
 		"BATCH_SIZE":          "5",
 		"DRY_RUN":             "false", // Controlled per test
 	}
-	
+
 	for key, value := range envVars {
 		originalEnv[key] = os.Getenv(key)
 		os.Setenv(key, value)
 	}
-	
+
 	return originalEnv
 }
 
@@ -264,15 +267,15 @@ func createTestApp(tempDir string) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Create real dependencies
 	appLogger, err := logger.NewLogger(cfg.LogsDirectory)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	fileRepo := filesystem.NewFileProcessor(cfg.ProcessedDirectory)
-	
+
 	// Use mock Jira repository for safety - even in dry-run we don't want real API calls
 	jiraRepo := &mocks.MockJiraRepository{
 		ValidateProjectFunc: func(ctx context.Context, projectKey string) error {
@@ -294,17 +297,17 @@ func createTestApp(tempDir string) (*App, error) {
 			result.IssueKey = "TEST-123"
 			result.IssueURL = "https://test.atlassian.net/browse/TEST-123"
 			result.CreatedIssueKey = "TEST-123"
-			
+
 			// Mock subtask creation results
 			for _, subtarea := range story.Subtareas {
-				result.AddSubtaskResult(subtarea, true, fmt.Sprintf("TEST-124-%d", rowNumber), 
+				result.AddSubtaskResult(subtarea, true, fmt.Sprintf("TEST-124-%d", rowNumber),
 					fmt.Sprintf("https://test.atlassian.net/browse/TEST-124-%d", rowNumber), "")
 			}
-			
+
 			return result, nil
 		},
 	}
-	
+
 	// Create feature manager mock
 	featureManager := &mocks.MockFeatureManager{
 		CreateOrGetFeatureFunc: func(ctx context.Context, description string, projectKey string) (*entities.FeatureResult, error) {
@@ -313,16 +316,16 @@ func createTestApp(tempDir string) (*App, error) {
 			return result, nil
 		},
 	}
-	
+
 	// Create use cases
 	processUseCase := usecases.NewProcessFilesUseCase(fileRepo, jiraRepo, featureManager)
 	validateUseCase := usecases.NewValidateFileUseCase(fileRepo, jiraRepo)
 	testConnectionUseCase := usecases.NewTestConnectionUseCase(jiraRepo)
 	diagnoseUseCase := usecases.NewDiagnoseFeaturesUseCase(featureManager)
-	
+
 	// Create formatter
 	formatter := formatters.NewOutputFormatter()
-	
+
 	// Create app
 	app := &App{
 		config:          cfg,
@@ -333,7 +336,7 @@ func createTestApp(tempDir string) (*App, error) {
 		processUseCase:  processUseCase,
 		diagnoseUseCase: diagnoseUseCase,
 	}
-	
+
 	return app, nil
 }
 

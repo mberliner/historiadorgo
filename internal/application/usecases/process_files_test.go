@@ -293,7 +293,7 @@ func TestProcessFilesUseCase_Execute_FileValidationErrors(t *testing.T) {
 		},
 		{
 			name:            "file read error after validation",
-			filePath:        "valid.csv", 
+			filePath:        "valid.csv",
 			projectKey:      "PROJ",
 			dryRun:          false,
 			readFileError:   errors.New("permission denied"),
@@ -303,7 +303,7 @@ func TestProcessFilesUseCase_Execute_FileValidationErrors(t *testing.T) {
 		{
 			name:          "move file error after successful processing",
 			filePath:      "valid.csv",
-			projectKey:    "PROJ", 
+			projectKey:    "PROJ",
 			dryRun:        false,
 			moveFileError: errors.New("target directory not writable"),
 			wantError:     false, // Should not fail completely, just add warning
@@ -332,7 +332,7 @@ func TestProcessFilesUseCase_Execute_FileValidationErrors(t *testing.T) {
 					return tt.moveFileError
 				},
 			}
-			
+
 			jiraRepo := &mocks.MockJiraRepository{
 				TestConnectionFunc: func(ctx context.Context) error {
 					return nil
@@ -350,7 +350,7 @@ func TestProcessFilesUseCase_Execute_FileValidationErrors(t *testing.T) {
 					return fixtures.SuccessProcessResult(), nil
 				},
 			}
-			
+
 			featureRepo := &mocks.MockFeatureManager{}
 
 			useCase := NewProcessFilesUseCase(fileRepo, jiraRepo, featureRepo)
@@ -378,17 +378,17 @@ func TestProcessFilesUseCase_ProcessAllFiles_ErrorPaths(t *testing.T) {
 	ctx := context.Background()
 
 	tests := []struct {
-		name                string
-		inputDir            string
-		projectKey          string
-		dryRun              bool
-		files               []string
-		getFilesError       error
-		executeError        error
-		validationError     error
-		wantError           bool
-		wantErrorString     string
-		wantResultsCount    int
+		name             string
+		inputDir         string
+		projectKey       string
+		dryRun           bool
+		files            []string
+		getFilesError    error
+		executeError     error
+		validationError  error
+		wantError        bool
+		wantErrorString  string
+		wantResultsCount int
 	}{
 		{
 			name:            "validation error in non-dry-run",
@@ -402,7 +402,7 @@ func TestProcessFilesUseCase_ProcessAllFiles_ErrorPaths(t *testing.T) {
 		{
 			name:            "get pending files error",
 			inputDir:        "/nonexistent",
-			projectKey:      "PROJ", 
+			projectKey:      "PROJ",
 			dryRun:          true,
 			getFilesError:   errors.New("directory not found"),
 			wantError:       true,
@@ -412,7 +412,7 @@ func TestProcessFilesUseCase_ProcessAllFiles_ErrorPaths(t *testing.T) {
 			name:            "no files found",
 			inputDir:        "/empty",
 			projectKey:      "PROJ",
-			dryRun:          true, 
+			dryRun:          true,
 			files:           []string{},
 			wantError:       true,
 			wantErrorString: "no files found",
@@ -448,7 +448,7 @@ func TestProcessFilesUseCase_ProcessAllFiles_ErrorPaths(t *testing.T) {
 					return []*entities.UserStory{fixtures.ValidUserStory1()}, nil
 				},
 			}
-			
+
 			jiraRepo := &mocks.MockJiraRepository{
 				TestConnectionFunc: func(ctx context.Context) error {
 					if !tt.dryRun && tt.validationError != nil {
@@ -466,7 +466,7 @@ func TestProcessFilesUseCase_ProcessAllFiles_ErrorPaths(t *testing.T) {
 					return nil
 				},
 			}
-			
+
 			featureRepo := &mocks.MockFeatureManager{}
 
 			useCase := NewProcessFilesUseCase(fileRepo, jiraRepo, featureRepo)

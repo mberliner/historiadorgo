@@ -249,7 +249,7 @@ func TestDefaultValues(t *testing.T) {
 func TestCreateInteractiveEnvFile_InputValidation(t *testing.T) {
 	// Clean up any existing .env file
 	defer os.Remove(".env")
-	
+
 	tests := []struct {
 		name        string
 		inputLines  []string
@@ -275,7 +275,7 @@ func TestCreateInteractiveEnvFile_InputValidation(t *testing.T) {
 			errorString: "JIRA_API_TOKEN es requerido",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// This function would need significant refactoring to be unit testable
@@ -290,12 +290,12 @@ func TestCreateInteractiveEnvFile_InputValidation(t *testing.T) {
 func TestLoadConfig_EnvFileScenarios(t *testing.T) {
 	// Test scenarios where .env file exists vs doesn't exist
 	tests := []struct {
-		name          string
-		envFileExists bool
+		name           string
+		envFileExists  bool
 		envFileContent string
-		envVars       map[string]string
-		wantError     bool
-		wantJiraURL   string
+		envVars        map[string]string
+		wantError      bool
+		wantJiraURL    string
 	}{
 		{
 			name:          "env_file_exists_valid",
@@ -303,14 +303,14 @@ func TestLoadConfig_EnvFileScenarios(t *testing.T) {
 			envFileContent: `JIRA_URL=https://file.atlassian.net
 JIRA_EMAIL=file@example.com
 JIRA_API_TOKEN=file-token`,
-			wantError:     false,
-			wantJiraURL:   "https://file.atlassian.net",
+			wantError:   false,
+			wantJiraURL: "https://file.atlassian.net",
 		},
 		{
-			name:          "env_file_exists_but_invalid",
-			envFileExists: true,
+			name:           "env_file_exists_but_invalid",
+			envFileExists:  true,
 			envFileContent: `JIRA_URL=https://file.atlassian.net`,
-			wantError:     true,
+			wantError:      true,
 		},
 		{
 			name:          "no_env_file_but_env_vars_set",
@@ -324,27 +324,27 @@ JIRA_API_TOKEN=file-token`,
 			wantJiraURL: "https://env.atlassian.net",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Clean up
 			clearEnv()
 			defer os.Remove(".env")
-			
+
 			// Set up env file if needed
 			if tt.envFileExists {
 				if err := os.WriteFile(".env", []byte(tt.envFileContent), 0644); err != nil {
 					t.Fatalf("Failed to create test .env file: %v", err)
 				}
 			}
-			
+
 			// Set environment variables if provided
 			for key, value := range tt.envVars {
 				os.Setenv(key, value)
 			}
-			
+
 			config, err := LoadConfig()
-			
+
 			if tt.wantError && err == nil {
 				t.Errorf("LoadConfig() error = nil, wantError = true")
 				return
@@ -353,13 +353,13 @@ JIRA_API_TOKEN=file-token`,
 				t.Errorf("LoadConfig() error = %v, wantError = false", err)
 				return
 			}
-			
+
 			if !tt.wantError && config != nil {
 				if config.JiraURL != tt.wantJiraURL {
 					t.Errorf("JiraURL = %v, want %v", config.JiraURL, tt.wantJiraURL)
 				}
 			}
-			
+
 			clearEnv()
 		})
 	}
@@ -368,20 +368,20 @@ JIRA_API_TOKEN=file-token`,
 func TestLoadConfig_EnvOverrides(t *testing.T) {
 	// Test that environment variables can override config values
 	tests := []struct {
-		name            string
-		envVars         map[string]string
-		wantBatchSize   int
-		wantDryRun      bool
-		wantInputDir    string
+		name          string
+		envVars       map[string]string
+		wantBatchSize int
+		wantDryRun    bool
+		wantInputDir  string
 	}{
 		{
 			name: "custom_batch_size_and_dry_run",
 			envVars: map[string]string{
-				"JIRA_URL":       "https://test.atlassian.net",
-				"JIRA_EMAIL":     "test@example.com",
-				"JIRA_API_TOKEN": "test-token",
-				"BATCH_SIZE":     "25",
-				"DRY_RUN":        "true",
+				"JIRA_URL":        "https://test.atlassian.net",
+				"JIRA_EMAIL":      "test@example.com",
+				"JIRA_API_TOKEN":  "test-token",
+				"BATCH_SIZE":      "25",
+				"DRY_RUN":         "true",
 				"INPUT_DIRECTORY": "custom_input",
 			},
 			wantBatchSize: 25,
@@ -397,27 +397,27 @@ func TestLoadConfig_EnvOverrides(t *testing.T) {
 				"BATCH_SIZE":     "invalid",
 				"DRY_RUN":        "invalid",
 			},
-			wantBatchSize: 10, // default
-			wantDryRun:    false, // default
+			wantBatchSize: 10,        // default
+			wantDryRun:    false,     // default
 			wantInputDir:  "entrada", // default
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			clearEnv()
 			defer clearEnv()
-			
+
 			// Set test environment variables
 			for key, value := range tt.envVars {
 				os.Setenv(key, value)
 			}
-			
+
 			config, err := LoadConfig()
 			if err != nil {
 				t.Fatalf("LoadConfig() error = %v", err)
 			}
-			
+
 			if config.BatchSize != tt.wantBatchSize {
 				t.Errorf("BatchSize = %v, want %v", config.BatchSize, tt.wantBatchSize)
 			}
@@ -479,11 +479,11 @@ func TestConfig_ValidateExtended(t *testing.T) {
 			errorContains: "JIRA_URL, JIRA_EMAIL, JIRA_API_TOKEN",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := tt.config.Validate()
-			
+
 			if tt.wantError && err == nil {
 				t.Errorf("Validate() error = nil, wantError = true")
 				return
@@ -492,7 +492,7 @@ func TestConfig_ValidateExtended(t *testing.T) {
 				t.Errorf("Validate() error = %v, wantError = false", err)
 				return
 			}
-			
+
 			if tt.wantError && err != nil && tt.errorContains != "" {
 				if !strings.Contains(err.Error(), tt.errorContains) {
 					t.Errorf("Validate() error = %v, should contain %v", err.Error(), tt.errorContains)
@@ -556,17 +556,17 @@ func TestHasRequiredEnvVars_Coverage(t *testing.T) {
 			expected: false,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			clearEnv()
 			defer clearEnv()
-			
+
 			// Set test environment variables
 			for key, value := range tt.envVars {
 				os.Setenv(key, value)
 			}
-			
+
 			result := hasRequiredEnvVars()
 			if result != tt.expected {
 				t.Errorf("hasRequiredEnvVars() = %v, want %v", result, tt.expected)
