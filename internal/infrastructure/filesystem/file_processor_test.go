@@ -634,3 +634,135 @@ Test Story,Test Description,Test Criteria,Task 1,PROJ-123`,
 		})
 	}
 }
+
+func TestFileProcessor_readCSV_ErrorPaths(t *testing.T) {
+	tempDir := t.TempDir()
+	fp := NewFileProcessor(tempDir)
+
+	tests := []struct {
+		name        string
+		setupFile   func() string
+		expectedErr string
+	}{
+		{
+			name: "file_open_error",
+			setupFile: func() string {
+				return "/nonexistent/file.csv"
+			},
+			expectedErr: "error opening CSV file",
+		},
+		{
+			name: "malformed_csv_data",
+			setupFile: func() string {
+				content := `titulo,descripcion,criterio_aceptacion
+"Unclosed quote,Bad data,More bad data`
+				filePath := filepath.Join(tempDir, "malformed.csv")
+				os.WriteFile(filePath, []byte(content), 0644)
+				return filePath
+			},
+			expectedErr: "error parsing CSV",
+		},
+		{
+			name: "csv_with_missing_required_fields",
+			setupFile: func() string {
+				content := `titulo,descripcion,criterio_aceptacion,subtareas,parent
+Test Story,,Test Criteria,Task 1,PROJ-123
+,Test Description,Test Criteria,Task 2,PROJ-124
+Test Story 2,Test Description 2,,Task 3,PROJ-125`
+				filePath := filepath.Join(tempDir, "missing_fields.csv")
+				os.WriteFile(filePath, []byte(content), 0644)
+				return filePath
+			},
+			expectedErr: "", // Should return empty stories array, not error
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			filePath := tt.setupFile()
+			
+			stories, err := fp.readCSV(filePath)
+
+			if tt.expectedErr == "" {
+				if err != nil {
+					t.Errorf("Expected no error, got: %v", err)
+				}
+				// For missing fields test, should return 0 stories
+				if tt.name == "csv_with_missing_required_fields" && len(stories) != 0 {
+					t.Errorf("Expected 0 stories for missing fields, got %d", len(stories))
+				}
+			} else {
+				if err == nil {
+					t.Errorf("Expected error containing '%s', got no error", tt.expectedErr)
+				} else if !strings.Contains(err.Error(), tt.expectedErr) {
+					t.Errorf("Expected error containing '%s', got: %v", tt.expectedErr, err)
+				}
+			}
+		})
+	}
+}
+
+func TestFileProcessor_readExcel_ErrorPaths(t *testing.T) {
+	tempDir := t.TempDir()
+	fp := NewFileProcessor(tempDir)
+
+	tests := []struct {
+		name        string
+		setupFile   func() string
+		expectedErr string
+	}{
+		{
+			name: "file_open_error",
+			setupFile: func() string {
+				return "/nonexistent/file.xlsx"
+			},
+			expectedErr: "error opening Excel file",
+		},
+		{
+			name: "excel_file_with_insufficient_rows",
+			setupFile: func() string {
+				// Create a valid CSV file with .xlsx extension to trigger Excel reading
+				content := `titulo`
+				filePath := filepath.Join(tempDir, "insufficient.xlsx")
+				os.WriteFile(filePath, []byte(content), 0644)
+				return filePath
+			},
+			expectedErr: "error opening Excel file",
+		},
+		{
+			name: "excel_with_validation_error",
+			setupFile: func() string {
+				// This will fail when trying to read as Excel file
+				content := `titulo,descripcion,criterio_aceptacion
+Invalid Excel Data`
+				filePath := filepath.Join(tempDir, "invalid.xlsx")
+				os.WriteFile(filePath, []byte(content), 0644)
+				return filePath
+			},
+			expectedErr: "error opening Excel file",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			filePath := tt.setupFile()
+			
+			stories, err := fp.readExcel(filePath)
+
+			if tt.expectedErr == "" {
+				if err != nil {
+					t.Errorf("Expected no error, got: %v", err)
+				}
+			} else {
+				if err == nil {
+					t.Errorf("Expected error containing '%s', got no error", tt.expectedErr)
+				} else if !strings.Contains(err.Error(), tt.expectedErr) {
+					t.Errorf("Expected error containing '%s', got: %v", tt.expectedErr, err)
+				}
+			}
+			if err != nil && stories != nil {
+				t.Error("Expected nil stories when error occurs")
+			}
+		})
+	}
+}

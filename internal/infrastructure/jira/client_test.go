@@ -1032,3 +1032,322 @@ func TestJiraClient_createSubtasks_ComprehensiveTests(t *testing.T) {
 		})
 	}
 }
+
+func TestJiraClient_TestConnection_NetworkErrors(t *testing.T) {
+	tests := []struct {
+		name          string
+		serverFunc    func(w http.ResponseWriter, r *http.Request)
+		expectedError string
+	}{
+		{
+			name: "connection_timeout",
+			serverFunc: func(w http.ResponseWriter, r *http.Request) {
+				// Simulate network timeout by hijacking connection
+				hj, ok := w.(http.Hijacker)
+				if !ok {
+					http.Error(w, "webserver doesn't support hijacking", http.StatusInternalServerError)
+					return
+				}
+				conn, _, _ := hj.Hijack()
+				conn.Close()
+			},
+			expectedError: "connection failed",
+		},
+		{
+			name: "request_creation_error",
+			serverFunc: func(w http.ResponseWriter, r *http.Request) {
+				// This test should not reach the server
+				t.Error("Server should not be called for request creation error")
+			},
+			expectedError: "error creating request",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.name == "request_creation_error" {
+				// Test with invalid URL to cause request creation error
+				cfg := createTestConfig()
+				cfg.JiraURL = "://invalid-url"
+				client := NewJiraClient(cfg)
+				
+				err := client.TestConnection(context.Background())
+				if err == nil {
+					t.Error("Expected error, got nil")
+				}
+				if !strings.Contains(err.Error(), tt.expectedError) {
+					t.Errorf("Expected error to contain %q, got: %v", tt.expectedError, err)
+				}
+			} else {
+				server := httptest.NewServer(http.HandlerFunc(tt.serverFunc))
+				defer server.Close()
+
+				cfg := createTestConfig()
+				cfg.JiraURL = server.URL
+				client := NewJiraClient(cfg)
+
+				err := client.TestConnection(context.Background())
+				if err == nil {
+					t.Error("Expected error, got nil")
+				}
+				if !strings.Contains(err.Error(), tt.expectedError) {
+					t.Errorf("Expected error to contain %q, got: %v", tt.expectedError, err)
+				}
+			}
+		})
+	}
+}
+
+func TestJiraClient_ValidateProject_NetworkErrors(t *testing.T) {
+	tests := []struct {
+		name          string
+		setupFunc     func() (*JiraClient, string) // returns client and project key
+		expectedError string
+	}{
+		{
+			name: "request_creation_error",
+			setupFunc: func() (*JiraClient, string) {
+				cfg := createTestConfig()
+				cfg.JiraURL = "://invalid-url"
+				client := NewJiraClient(cfg)
+				return client, "TEST"
+			},
+			expectedError: "error creating request",
+		},
+		{
+			name: "network_error",
+			setupFunc: func() (*JiraClient, string) {
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					hj, ok := w.(http.Hijacker)
+					if !ok {
+						http.Error(w, "webserver doesn't support hijacking", http.StatusInternalServerError)
+						return
+					}
+					conn, _, _ := hj.Hijack()
+					conn.Close()
+				}))
+				defer server.Close()
+
+				cfg := createTestConfig()
+				cfg.JiraURL = server.URL
+				client := NewJiraClient(cfg)
+				return client, "TEST"
+			},
+			expectedError: "error validating project",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client, projectKey := tt.setupFunc()
+			
+			err := client.ValidateProject(context.Background(), projectKey)
+			if err == nil {
+				t.Error("Expected error, got nil")
+			}
+			if !strings.Contains(err.Error(), tt.expectedError) {
+				t.Errorf("Expected error to contain %q, got: %v", tt.expectedError, err)
+			}
+		})
+	}
+}
+
+func TestJiraClient_ValidateSubtaskIssueType_ErrorPaths(t *testing.T) {
+	tests := []struct {
+		name          string
+		serverFunc    func(w http.ResponseWriter, r *http.Request)
+		expectedError string
+	}{
+		{
+			name: "get_issue_types_error",
+			serverFunc: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte("Server error"))
+			},
+			expectedError: "error getting issue types",
+		},
+		{
+			name: "subtask_name_matches_but_not_subtask",
+			serverFunc: func(w http.ResponseWriter, r *http.Request) {
+				issueTypes := []map[string]interface{}{
+					{
+						"name":    "Sub-task",
+						"subtask": false, // Wrong: should be true for subtasks
+					},
+				}
+				w.WriteHeader(http.StatusOK)
+				json.NewEncoder(w).Encode(issueTypes)
+			},
+			expectedError: "subtask issue type 'Sub-task' not found",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(tt.serverFunc))
+			defer server.Close()
+
+			cfg := createTestConfig()
+			cfg.JiraURL = server.URL
+			client := NewJiraClient(cfg)
+
+			err := client.ValidateSubtaskIssueType(context.Background(), "TEST")
+			if err == nil {
+				t.Error("Expected error, got nil")
+			}
+			if !strings.Contains(err.Error(), tt.expectedError) {
+				t.Errorf("Expected error to contain %q, got: %v", tt.expectedError, err)
+			}
+		})
+	}
+}
+
+func TestJiraClient_ValidateFeatureIssueType_ErrorPaths(t *testing.T) {
+	tests := []struct {
+		name          string
+		serverFunc    func(w http.ResponseWriter, r *http.Request)
+		expectedError string
+	}{
+		{
+			name: "get_issue_types_error",
+			serverFunc: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte("Server error"))
+			},
+			expectedError: "error getting issue types",
+		},
+		{
+			name: "feature_type_not_found_in_response",
+			serverFunc: func(w http.ResponseWriter, r *http.Request) {
+				issueTypes := []map[string]interface{}{
+					{
+						"name":    "Story",
+						"subtask": false,
+					},
+					{
+						"name":    "Bug",
+						"subtask": false,
+					},
+				}
+				w.WriteHeader(http.StatusOK)
+				json.NewEncoder(w).Encode(issueTypes)
+			},
+			expectedError: "feature issue type 'Feature' not found",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(tt.serverFunc))
+			defer server.Close()
+
+			cfg := createTestConfig()
+			cfg.JiraURL = server.URL
+			client := NewJiraClient(cfg)
+
+			err := client.ValidateFeatureIssueType(context.Background())
+			if err == nil {
+				t.Error("Expected error, got nil")
+			}
+			if !strings.Contains(err.Error(), tt.expectedError) {
+				t.Errorf("Expected error to contain %q, got: %v", tt.expectedError, err)
+			}
+		})
+	}
+}
+
+func TestJiraClient_buildIssuePayload_VariousScenarios(t *testing.T) {
+	tests := []struct {
+		name                         string
+		acceptanceCriteriaField      string
+		parent                       string
+		expectedHasAcceptanceField   bool
+		expectedHasParent            bool
+		expectedDescriptionIncludes  string
+	}{
+		{
+			name:                        "no_acceptance_criteria_field",
+			acceptanceCriteriaField:     "",
+			parent:                      "",
+			expectedHasAcceptanceField:  false,
+			expectedHasParent:           false,
+			expectedDescriptionIncludes: "criteria", // Should include criteria in description
+		},
+		{
+			name:                        "with_acceptance_field_no_parent",
+			acceptanceCriteriaField:     "customfield_10001",
+			parent:                      "",
+			expectedHasAcceptanceField:  true,
+			expectedHasParent:           false,
+			expectedDescriptionIncludes: "description", // Should have separate description
+		},
+		{
+			name:                        "with_non_jira_key_parent",
+			acceptanceCriteriaField:     "customfield_10001",
+			parent:                      "Some Feature Description",
+			expectedHasAcceptanceField:  true,
+			expectedHasParent:           false,
+			expectedDescriptionIncludes: "description",
+		},
+		{
+			name:                        "with_jira_key_parent",
+			acceptanceCriteriaField:     "customfield_10001",
+			parent:                      "PROJ-123",
+			expectedHasAcceptanceField:  true,
+			expectedHasParent:           true,
+			expectedDescriptionIncludes: "description",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := createTestConfig()
+			cfg.AcceptanceCriteriaField = tt.acceptanceCriteriaField
+			client := NewJiraClient(cfg)
+
+			story := entities.NewUserStory(
+				"Test Story",
+				"Test Description",
+				"Test Criteria",
+				"",
+				tt.parent,
+			)
+
+			payload := client.buildIssuePayload(story, "PROJ")
+
+			fields, ok := payload["fields"].(map[string]interface{})
+			if !ok {
+				t.Fatal("Expected fields to be a map")
+			}
+
+			// Check acceptance criteria field
+			if tt.expectedHasAcceptanceField {
+				if _, exists := fields[tt.acceptanceCriteriaField]; !exists {
+					t.Errorf("Expected acceptance criteria field %s to be present", tt.acceptanceCriteriaField)
+				}
+			} else {
+				if tt.acceptanceCriteriaField != "" {
+					if _, exists := fields[tt.acceptanceCriteriaField]; exists {
+						t.Error("Should not have acceptance criteria field when not configured")
+					}
+				}
+			}
+
+			// Check parent field
+			if tt.expectedHasParent {
+				if _, exists := fields["parent"]; !exists {
+					t.Error("Expected parent field to be present")
+				}
+			} else {
+				if _, exists := fields["parent"]; exists {
+					t.Error("Should not have parent field")
+				}
+			}
+
+			// Verify description is present
+			if _, exists := fields["description"]; !exists {
+				t.Error("Expected description field to be present")
+			}
+		})
+	}
+}

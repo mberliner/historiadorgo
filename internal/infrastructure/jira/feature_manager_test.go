@@ -190,9 +190,6 @@ func TestFeatureManager_CreateOrGetFeature_CreateNew(t *testing.T) {
 }
 
 func TestFeatureManager_SearchExistingFeature(t *testing.T) {
-	fm, server := createTestFeatureManager()
-	defer server.Close()
-
 	tests := []struct {
 		name         string
 		description  string
@@ -248,12 +245,24 @@ func TestFeatureManager_SearchExistingFeature(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Create individual server for each subtest to avoid race conditions
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if strings.Contains(r.URL.Path, "/rest/api/3/search") {
 					w.Header().Set("Content-Type", "application/json")
 					json.NewEncoder(w).Encode(tt.mockResponse)
 				}
-			})
+			}))
+			defer server.Close()
+
+			cfg := &config.Config{
+				JiraURL:          server.URL,
+				JiraEmail:        "test@example.com",
+				JiraAPIToken:     "test-token",
+				FeatureIssueType: "Feature",
+			}
+
+			jiraClient := NewJiraClient(cfg)
+			fm := NewFeatureManager(jiraClient, cfg)
 
 			key, err := fm.SearchExistingFeature(context.Background(), tt.description, "PROJ")
 
@@ -948,6 +957,223 @@ func TestFeatureManager_buildFeaturePayload(t *testing.T) {
 			}
 			if issueType["name"] != cfg.FeatureIssueType {
 				t.Errorf("Expected issue type to be '%s', got %v", cfg.FeatureIssueType, issueType["name"])
+			}
+		})
+	}
+}
+
+func TestFeatureManager_CreateOrGetFeature_SearchError(t *testing.T) {
+	fm, server := createTestFeatureManager()
+	defer server.Close()
+
+	description := "Test Feature Description"
+
+	// Mock para búsqueda que falla
+	server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/rest/api/3/search") {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("Search failed"))
+		}
+	})
+
+	result, err := fm.CreateOrGetFeature(context.Background(), description, "PROJ")
+
+	if err != nil {
+		t.Errorf("Expected no error, got: %v", err)
+	}
+
+	if result.Success {
+		t.Error("Expected result to not be successful")
+	}
+
+	if !strings.Contains(result.ErrorMessage, "Error searching existing features") {
+		t.Errorf("Expected search error, got: %s", result.ErrorMessage)
+	}
+}
+
+func TestFeatureManager_CreateOrGetFeature_CreateError(t *testing.T) {
+	fm, server := createTestFeatureManager()
+	defer server.Close()
+
+	description := "New Feature Description"
+
+	// Mock para crear nuevo feature que falla
+	server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/rest/api/3/search") {
+			// No features found
+			response := JiraSearchResponse{
+				Issues: []JiraIssue{},
+				Total:  0,
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(response)
+		} else if strings.Contains(r.URL.Path, "/rest/api/3/issue") && r.Method == "POST" {
+			// Create fails
+			w.WriteHeader(http.StatusBadRequest)
+			errorResp := JiraErrorResponse{
+				ErrorMessages: []string{"Feature creation failed"},
+			}
+			json.NewEncoder(w).Encode(errorResp)
+		}
+	})
+
+	result, err := fm.CreateOrGetFeature(context.Background(), description, "PROJ")
+
+	if err != nil {
+		t.Errorf("Expected no error, got: %v", err)
+	}
+
+	if result.Success {
+		t.Error("Expected result to not be successful")
+	}
+
+	if !strings.Contains(result.ErrorMessage, "Error creating feature") {
+		t.Errorf("Expected creation error, got: %s", result.ErrorMessage)
+	}
+}
+
+func TestFeatureManager_SearchExistingFeature_ErrorPaths(t *testing.T) {
+	tests := []struct {
+		name        string
+		serverFunc  func(w http.ResponseWriter, r *http.Request)
+		expectError bool
+	}{
+		{
+			name: "network_error",
+			serverFunc: func(w http.ResponseWriter, r *http.Request) {
+				hj, ok := w.(http.Hijacker)
+				if !ok {
+					http.Error(w, "webserver doesn't support hijacking", http.StatusInternalServerError)
+					return
+				}
+				conn, _, _ := hj.Hijack()
+				conn.Close()
+			},
+			expectError: true,
+		},
+		{
+			name: "invalid_status_code",
+			serverFunc: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte("Server error"))
+			},
+			expectError: true,
+		},
+		{
+			name: "invalid_json_response",
+			serverFunc: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte("invalid json"))
+			},
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create individual server for each subtest to avoid race conditions
+			server := httptest.NewServer(http.HandlerFunc(tt.serverFunc))
+			defer server.Close()
+
+			cfg := &config.Config{
+				JiraURL:          server.URL,
+				JiraEmail:        "test@example.com",
+				JiraAPIToken:     "test-token",
+				FeatureIssueType: "Feature",
+			}
+
+			jiraClient := NewJiraClient(cfg)
+			fm := NewFeatureManager(jiraClient, cfg)
+
+			key, err := fm.SearchExistingFeature(context.Background(), "Test", "PROJ")
+			if tt.expectError {
+				if err == nil {
+					t.Error("Expected error, got nil")
+				}
+				if key != "" {
+					t.Errorf("Expected empty key on error, got: %s", key)
+				}
+			}
+		})
+	}
+}
+
+func TestFeatureManager_SearchExistingFeature_EdgeCases(t *testing.T) {
+	fm, server := createTestFeatureManager()
+	defer server.Close()
+
+	tests := []struct {
+		name        string
+		description string
+		mockIssues  []JiraIssue
+		expectedKey string
+	}{
+		{
+			name:        "issue_without_summary_field",
+			description: "Test Feature",
+			mockIssues: []JiraIssue{
+				{
+					Key: "PROJ-123",
+					Fields: map[string]interface{}{
+						"description": "Some description without summary",
+					},
+				},
+			},
+			expectedKey: "", // Should not match without summary
+		},
+		{
+			name:        "issue_with_non_string_summary",
+			description: "Test Feature",
+			mockIssues: []JiraIssue{
+				{
+					Key: "PROJ-123",
+					Fields: map[string]interface{}{
+						"summary": 123, // number instead of string
+					},
+				},
+			},
+			expectedKey: "", // Should not match with non-string summary
+		},
+		{
+			name:        "multiple_issues_first_matches",
+			description: "Test Feature System Implementation",
+			mockIssues: []JiraIssue{
+				{
+					Key: "PROJ-123",
+					Fields: map[string]interface{}{
+						"summary": "Test Feature System Development", // Should match due to similarity
+					},
+				},
+				{
+					Key: "PROJ-124", 
+					Fields: map[string]interface{}{
+						"summary": "Different Feature",
+					},
+				},
+			},
+			expectedKey: "PROJ-123", // Should return first match
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if strings.Contains(r.URL.Path, "/rest/api/3/search") {
+					response := JiraSearchResponse{
+						Issues: tt.mockIssues,
+						Total:  len(tt.mockIssues),
+					}
+					w.Header().Set("Content-Type", "application/json")
+					json.NewEncoder(w).Encode(response)
+				}
+			})
+
+			key, err := fm.SearchExistingFeature(context.Background(), tt.description, "PROJ")
+			if err != nil {
+				t.Errorf("Expected no error, got: %v", err)
+			}
+			if key != tt.expectedKey {
+				t.Errorf("Expected key '%s', got '%s'", tt.expectedKey, key)
 			}
 		})
 	}
