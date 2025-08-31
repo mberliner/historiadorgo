@@ -97,6 +97,32 @@ func ValidUserStory1() *entities.UserStory {
 	return story
 }
 
+// UserStoryWithParent returns a user story with a parent feature
+func UserStoryWithParent() *entities.UserStory {
+	story := entities.NewUserStory(
+		"Historia con feature",
+		"Historia que requiere un feature padre",
+		"Debe vincularse al feature correctamente",
+		"Subtarea 1;Subtarea 2",
+		"Nuevo Sistema de Reportes",
+	)
+	story.Row = 1
+	return story
+}
+
+// UserStoryWithSubtasks returns a user story with subtasks
+func UserStoryWithSubtasks() *entities.UserStory {
+	story := entities.NewUserStory(
+		"Historia con subtareas",
+		"Historia que tiene múltiples subtareas",
+		"Todas las subtareas deben crearse",
+		"Primera subtarea;Segunda subtarea;Tercera subtarea",
+		"",
+	)
+	story.Row = 1
+	return story
+}
+
 // ValidUserStory2 returns another valid user story for testing
 func ValidUserStory2() *entities.UserStory {
 	story := entities.NewUserStory(

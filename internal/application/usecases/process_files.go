@@ -135,6 +135,25 @@ func (uc *ProcessFilesUseCase) processUserStory(ctx context.Context, story *enti
 		return result
 	}
 
+	// Handle feature creation/resolution if story has parent
+	if story.HasParent() {
+		featureResult, err := uc.featureRepo.CreateOrGetFeature(ctx, story.Parent, projectKey)
+		if err != nil {
+			result.Success = false
+			result.ErrorMessage = fmt.Sprintf("feature handling failed: %v", err)
+			return result
+		}
+
+		// Update story with the resolved parent key
+		if featureResult.Success && featureResult.IssueKey != "" {
+			story.Parent = featureResult.IssueKey
+		} else if !featureResult.Success {
+			result.Success = false
+			result.ErrorMessage = fmt.Sprintf("feature creation failed: %s", featureResult.ErrorMessage)
+			return result
+		}
+	}
+
 	processResult, err := uc.jiraRepo.CreateUserStory(ctx, story, rowNumber)
 	if err != nil {
 		result.Success = false

@@ -119,7 +119,14 @@ func TestProcessFilesUseCase_Execute(t *testing.T) {
 				},
 			}
 
-			mockFeatureRepo := &mocks.MockFeatureManager{}
+			mockFeatureRepo := &mocks.MockFeatureManager{
+				CreateOrGetFeatureFunc: func(ctx context.Context, description, projectKey string) (*entities.FeatureResult, error) {
+					// Mock successful feature creation/retrieval
+					featureResult := entities.NewFeatureResult(description)
+					featureResult.SetExisting("PROJ-100") // Return the parent key as if it already exists
+					return featureResult, nil
+				},
+			}
 
 			// Create use case
 			useCase := NewProcessFilesUseCase(mockFileRepo, mockJiraRepo, mockFeatureRepo)
@@ -192,7 +199,14 @@ func TestProcessFilesUseCase_Execute_BatchProcessing(t *testing.T) {
 		},
 	}
 
-	mockFeatureRepo := &mocks.MockFeatureManager{}
+	mockFeatureRepo := &mocks.MockFeatureManager{
+		CreateOrGetFeatureFunc: func(ctx context.Context, description, projectKey string) (*entities.FeatureResult, error) {
+			// Mock successful feature creation/retrieval
+			featureResult := entities.NewFeatureResult(description)
+			featureResult.SetExisting("PROJ-100") // Return the parent key as if it already exists
+			return featureResult, nil
+		},
+	}
 
 	useCase := NewProcessFilesUseCase(mockFileRepo, mockJiraRepo, mockFeatureRepo)
 	result, err := useCase.Execute(ctx, "test.csv", "PROJ", false)
@@ -245,7 +259,14 @@ func TestProcessFilesUseCase_Execute_MixedResults(t *testing.T) {
 		},
 	}
 
-	mockFeatureRepo := &mocks.MockFeatureManager{}
+	mockFeatureRepo := &mocks.MockFeatureManager{
+		CreateOrGetFeatureFunc: func(ctx context.Context, description, projectKey string) (*entities.FeatureResult, error) {
+			// Mock successful feature creation/retrieval
+			featureResult := entities.NewFeatureResult(description)
+			featureResult.SetExisting("PROJ-100") // Return the parent key as if it already exists
+			return featureResult, nil
+		},
+	}
 
 	useCase := NewProcessFilesUseCase(mockFileRepo, mockJiraRepo, mockFeatureRepo)
 	result, err := useCase.Execute(ctx, "test.csv", "PROJ", false)
@@ -606,7 +627,14 @@ func TestProcessFilesUseCase_ProcessAllFiles(t *testing.T) {
 				},
 			}
 
-			mockFeatureRepo := &mocks.MockFeatureManager{}
+			mockFeatureRepo := &mocks.MockFeatureManager{
+				CreateOrGetFeatureFunc: func(ctx context.Context, description, projectKey string) (*entities.FeatureResult, error) {
+					// Mock successful feature creation/retrieval
+					featureResult := entities.NewFeatureResult(description)
+					featureResult.SetExisting("PROJ-100") // Return the parent key as if it already exists
+					return featureResult, nil
+				},
+			}
 
 			useCase := NewProcessFilesUseCase(mockFileRepo, mockJiraRepo, mockFeatureRepo)
 
@@ -810,4 +838,155 @@ func TestProcessFilesUseCase_processUserStory_Production(t *testing.T) {
 // Helper function to check if string contains substring
 func contains(s, substr string) bool {
 	return strings.Contains(s, substr)
+}
+
+func TestProcessFilesUseCase_processUserStory_WithFeature(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name           string
+		story          *entities.UserStory
+		featureError   error
+		featureSuccess bool
+		featureKey     string
+		wantSuccess    bool
+		wantError      string
+	}{
+		{
+			name:           "successful feature creation",
+			story:          fixtures.UserStoryWithParent(),
+			featureSuccess: true,
+			featureKey:     "PROJ-FEAT-1",
+			wantSuccess:    true,
+		},
+		{
+			name:           "feature creation fails",
+			story:          fixtures.UserStoryWithParent(),
+			featureError:   errors.New("feature creation failed"),
+			featureSuccess: false,
+			wantSuccess:    false,
+			wantError:      "feature handling failed",
+		},
+		{
+			name:           "feature creation returns unsuccessful result",
+			story:          fixtures.UserStoryWithParent(),
+			featureSuccess: false,
+			featureKey:     "",
+			wantSuccess:    false,
+			wantError:      "feature creation failed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockFeatureRepo := &mocks.MockFeatureManager{
+				CreateOrGetFeatureFunc: func(ctx context.Context, featureDesc, projectKey string) (*entities.FeatureResult, error) {
+					if tt.featureError != nil {
+						return nil, tt.featureError
+					}
+					result := entities.NewFeatureResult(featureDesc)
+					if tt.featureSuccess {
+						result.SetSuccess(tt.featureKey, "https://example.com/browse/"+tt.featureKey, true)
+					} else {
+						result.SetError("Feature creation failed")
+					}
+					return result, nil
+				},
+			}
+
+			mockJiraRepo := &mocks.MockJiraRepository{
+				CreateUserStoryFunc: func(ctx context.Context, story *entities.UserStory, rowNumber int) (*entities.ProcessResult, error) {
+					result := entities.NewProcessResult(rowNumber)
+					result.Success = true
+					result.IssueKey = "PROJ-123"
+					return result, nil
+				},
+			}
+
+			useCase := &ProcessFilesUseCase{
+				featureRepo: mockFeatureRepo,
+				jiraRepo:    mockJiraRepo,
+			}
+
+			result := useCase.processUserStory(ctx, tt.story, "PROJ", 1, false)
+
+			if result.Success != tt.wantSuccess {
+				t.Errorf("processUserStory() Success = %v, want %v", result.Success, tt.wantSuccess)
+			}
+
+			if tt.wantError != "" && !contains(result.ErrorMessage, tt.wantError) {
+				t.Errorf("processUserStory() ErrorMessage = %v, want to contain %v", result.ErrorMessage, tt.wantError)
+			}
+		})
+	}
+}
+
+func TestProcessFilesUseCase_processUserStory_DryRunWithSubtasks(t *testing.T) {
+	ctx := context.Background()
+
+	story := fixtures.UserStoryWithSubtasks()
+	useCase := &ProcessFilesUseCase{}
+
+	result := useCase.processUserStory(ctx, story, "PROJ", 5, true)
+
+	// Verify dry run behavior
+	if !result.Success {
+		t.Errorf("processUserStory() dry run should always succeed")
+	}
+
+	if result.IssueKey != "DRY-RUN-5" {
+		t.Errorf("processUserStory() IssueKey = %v, want DRY-RUN-5", result.IssueKey)
+	}
+
+	expectedURL := "https://dry-run.example.com/browse/DRY-RUN-5"
+	if result.IssueURL != expectedURL {
+		t.Errorf("processUserStory() IssueURL = %v, want %v", result.IssueURL, expectedURL)
+	}
+
+	// Verify subtask creation
+	if len(result.Subtareas) == 0 {
+		t.Errorf("processUserStory() should create subtask results for dry run")
+	}
+
+	// Check first subtask result
+	if len(result.Subtareas) > 0 {
+		firstSubtask := result.Subtareas[0]
+		expectedSubtaskKey := "DRY-SUB-5-1"
+		expectedSubtaskURL := "https://dry-run.example.com/browse/DRY-SUB-5-1"
+
+		if firstSubtask.IssueKey != expectedSubtaskKey {
+			t.Errorf("processUserStory() first subtask key = %v, want %v", firstSubtask.IssueKey, expectedSubtaskKey)
+		}
+
+		if firstSubtask.IssueURL != expectedSubtaskURL {
+			t.Errorf("processUserStory() first subtask URL = %v, want %v", firstSubtask.IssueURL, expectedSubtaskURL)
+		}
+
+		if !firstSubtask.Success {
+			t.Errorf("processUserStory() subtask should succeed in dry run")
+		}
+	}
+}
+
+func TestProcessFilesUseCase_processUserStory_JiraCreationError(t *testing.T) {
+	ctx := context.Background()
+
+	story := fixtures.ValidUserStory1()
+
+	mockJiraRepo := &mocks.MockJiraRepository{
+		CreateUserStoryFunc: func(ctx context.Context, story *entities.UserStory, rowNumber int) (*entities.ProcessResult, error) {
+			return nil, errors.New("JIRA API connection failed")
+		},
+	}
+
+	useCase := &ProcessFilesUseCase{jiraRepo: mockJiraRepo}
+	result := useCase.processUserStory(ctx, story, "PROJ", 1, false)
+
+	if result.Success {
+		t.Errorf("processUserStory() should fail when JIRA creation fails")
+	}
+
+	if !contains(result.ErrorMessage, "JIRA API connection failed") {
+		t.Errorf("processUserStory() ErrorMessage should contain JIRA error: %v", result.ErrorMessage)
+	}
 }

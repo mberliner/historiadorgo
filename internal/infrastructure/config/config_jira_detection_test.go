@@ -19,61 +19,60 @@ func TestDetectAcceptanceCriteriaField(t *testing.T) {
 		{
 			name:       "success with acceptance criteria field",
 			statusCode: 200,
-			responseBody: `{
-				"projects": [{
-					"issuetypes": [{
-						"name": "Story",
-						"fields": {
-							"customfield_10147": {
-								"name": "Acceptance Criteria",
-								"required": false
-							},
-							"summary": {
-								"name": "Summary",
-								"required": true
-							}
-						}
-					}]
-				}]
-			}`,
+			responseBody: `[
+				{
+					"id": "customfield_10147",
+					"name": "Acceptance Criteria",
+					"description": "Field for acceptance criteria",
+					"custom": true
+				},
+				{
+					"id": "summary",
+					"name": "Summary",
+					"description": "Summary field",
+					"custom": false
+				}
+			]`,
 			expectedField: "customfield_10147",
 			expectedError: false,
 		},
 		{
 			name:       "success with criterio field in Spanish",
 			statusCode: 200,
-			responseBody: `{
-				"projects": [{
-					"issuetypes": [{
-						"name": "Story",
-						"fields": {
-							"customfield_10200": {
-								"name": "Criterio de Aceptación",
-								"required": false
-							}
-						}
-					}]
-				}]
-			}`,
+			responseBody: `[
+				{
+					"id": "customfield_10200",
+					"name": "Criterio de Aceptación",
+					"description": "Campo para criterios de aceptación",
+					"custom": true
+				},
+				{
+					"id": "summary",
+					"name": "Summary",
+					"description": "Summary field",
+					"custom": false
+				}
+			]`,
 			expectedField: "customfield_10200",
 			expectedError: false,
 		},
 		{
 			name:       "field not found",
 			statusCode: 200,
-			responseBody: `{
-				"projects": [{
-					"issuetypes": [{
-						"name": "Story",
-						"fields": {
-							"summary": {
-								"name": "Summary",
-								"required": true
-							}
-						}
-					}]
-				}]
-			}`,
+			responseBody: `[
+				{
+					"id": "summary",
+					"name": "Summary",
+					"description": "Summary field",
+					"custom": false
+				},
+				{
+					"id": "customfield_30000",
+					"name": "Some Other Field",
+					"description": "Some other custom field",
+					"custom": true
+				}
+			]`,
 			expectedField: "",
 			expectedError: true,
 		},
@@ -209,23 +208,24 @@ func TestDetectFeatureRequiredFields(t *testing.T) {
 func TestDetectJiraConfiguration(t *testing.T) {
 	// Mock server that returns both acceptance criteria and feature fields
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("issuetypeNames") == "Story" {
-			// Story response with acceptance criteria field
-			w.Write([]byte(`{
-				"projects": [{
-					"issuetypes": [{
-						"name": "Story",
-						"fields": {
-							"customfield_10147": {
-								"name": "Acceptance Criteria",
-								"required": false
-							}
-						}
-					}]
-				}]
-			}`))
+		if r.URL.Path == "/rest/api/3/field" {
+			// Response for detectAcceptanceCriteriaField
+			w.Write([]byte(`[
+				{
+					"id": "customfield_10147",
+					"name": "Acceptance Criteria",
+					"description": "Field for acceptance criteria",
+					"custom": true
+				},
+				{
+					"id": "summary",
+					"name": "Summary",
+					"description": "Summary field",
+					"custom": false
+				}
+			]`))
 		} else if r.URL.Query().Get("issuetypeNames") == "Feature" {
-			// Feature response with required fields
+			// Feature response with required fields for detectFeatureRequiredFields
 			w.Write([]byte(`{
 				"projects": [{
 					"issuetypes": [{

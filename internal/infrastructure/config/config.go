@@ -160,7 +160,7 @@ func CreateInteractiveEnvFile() error {
 
 	// Project configuration
 	projectKey := promptForInput(reader, "Clave del proyecto por defecto (ej: MYPROJ)", "")
-	
+
 	// Get issue types dynamically from Jira
 	var storyType, subtaskType, featureType string
 	if projectKey != "" {
@@ -168,7 +168,7 @@ func CreateInteractiveEnvFile() error {
 		fmt.Println("CONSULTANDO TIPOS DE ISSUE EN JIRA...")
 		fmt.Println("=====================================")
 		fmt.Println()
-		
+
 		issueTypes, err := getAvailableIssueTypes(jiraURL, jiraEmail, jiraToken, projectKey)
 		if err != nil {
 			fmt.Printf("⚠ No se pudieron obtener los tipos de issue desde Jira: %v\n", err)
@@ -219,11 +219,24 @@ func CreateInteractiveEnvFile() error {
 			acceptanceCriteriaField = autoConfig.AcceptanceCriteriaField
 			featureRequiredFields = autoConfig.FeatureRequiredFields
 
-			fmt.Printf("✓ Campo de criterios de aceptación detectado: %s\n", acceptanceCriteriaField)
+			if acceptanceCriteriaField != "" {
+				fmt.Printf("✓ Campo de criterios de aceptación detectado: %s\n", acceptanceCriteriaField)
+			} else {
+				fmt.Println("⚠ No se detectó campo de criterios de aceptación")
+			}
 			fmt.Printf("✓ Campos obligatorios para Features detectados\n")
 		} else {
 			fmt.Printf("⚠ No se pudo detectar configuración automáticamente: %v\n", err)
 		}
+	}
+
+	// If auto-detection failed or no project key, prompt manually for acceptance criteria field
+	if acceptanceCriteriaField == "" {
+		fmt.Println()
+		fmt.Println("Campo de criterios de aceptación:")
+		fmt.Println("  Si tienes un campo personalizado para criterios de aceptación en Jira,")
+		fmt.Println("  ingresa su ID (ej: customfield_10001) o déjalo vacío para omitir.")
+		acceptanceCriteriaField = promptForInput(reader, "  ID del campo", "")
 	}
 
 	// Create .env content
@@ -354,8 +367,8 @@ func DetectJiraConfiguration(jiraURL, jiraEmail, jiraToken, projectKey, storyTyp
 
 // detectAcceptanceCriteriaField detects the acceptance criteria custom field
 func detectAcceptanceCriteriaField(ctx context.Context, client *http.Client, baseURL, email, token, projectKey, storyType string) (string, error) {
-	// Get create meta for Story issue type to find acceptance criteria field
-	endpoint := fmt.Sprintf("%s/rest/api/3/issue/createmeta?projectKeys=%s&issuetypeNames=%s&expand=projects.issuetypes.fields", baseURL, projectKey, storyType)
+	// Get all fields for the project (includes optional custom fields)
+	endpoint := fmt.Sprintf("%s/rest/api/3/field", baseURL)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
 	if err != nil {
@@ -372,50 +385,103 @@ func detectAcceptanceCriteriaField(ctx context.Context, client *http.Client, bas
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("failed to get create meta: status %d", resp.StatusCode)
+		return "", fmt.Errorf("failed to get fields: status %d", resp.StatusCode)
 	}
 
-	var createMeta map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&createMeta); err != nil {
+	var fields []interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&fields); err != nil {
 		return "", err
 	}
 
-	projects, ok := createMeta["projects"].([]interface{})
-	if !ok || len(projects) == 0 {
-		return "", fmt.Errorf("no projects found")
+	// First, check for commonly known acceptance criteria field IDs
+	knownAcceptanceCriteriaFields := []string{
+		"customfield_10147", // Common Jira field for acceptance criteria
+		"customfield_10001", // Another common acceptance criteria field
+		"customfield_10002",
+		"customfield_10003",
+		"customfield_10004",
+		"customfield_10005",
 	}
 
-	project := projects[0].(map[string]interface{})
-	issueTypes, ok := project["issuetypes"].([]interface{})
-	if !ok {
-		return "", fmt.Errorf("no issue types found")
+	// Look for common acceptance criteria field names/patterns
+	acceptancePatterns := []string{
+		"acceptance", "criterio", "criteria", "aceptacion", "aceptación",
+		"criterios de aceptacion", "criterios de aceptación",
+		"acceptance criteria", "criterio aceptacion", "criterio aceptación",
+		"ac", "criterios", "acceptancecriteria", "definition of done",
+		"dod", "conditions of satisfaction", "user acceptance",
 	}
 
-	for _, issueTypeData := range issueTypes {
-		issueType := issueTypeData.(map[string]interface{})
-		if name, ok := issueType["name"].(string); ok && name == storyType {
-			fields, ok := issueType["fields"].(map[string]interface{})
-			if !ok {
-				return "", fmt.Errorf("no fields found")
-			}
+	// Collect all custom field names for debugging if not found
+	var availableCustomFields []string
+	var foundField string
 
-			// Look for common acceptance criteria field names/patterns
-			acceptancePatterns := []string{
-				"acceptance", "criterio", "criteria", "aceptacion", "aceptacion",
-			}
-
-			for fieldKey, fieldData := range fields {
-				if fieldMap, ok := fieldData.(map[string]interface{}); ok {
-					if fieldName, ok := fieldMap["name"].(string); ok {
-						fieldNameLower := strings.ToLower(fieldName)
-						for _, pattern := range acceptancePatterns {
-							if strings.Contains(fieldNameLower, pattern) {
-								return fieldKey, nil
-							}
+	// First pass: Check for known field IDs
+	for _, fieldData := range fields {
+		if fieldMap, ok := fieldData.(map[string]interface{}); ok {
+			if fieldId, hasId := fieldMap["id"].(string); hasId {
+				for _, knownField := range knownAcceptanceCriteriaFields {
+					if fieldId == knownField {
+						if fieldName, hasName := fieldMap["name"].(string); hasName {
+							fmt.Printf("✓ Campo de criterios de aceptación encontrado por ID conocido: %s (%s)\n", fieldName, fieldId)
+							return fieldId, nil
 						}
 					}
 				}
 			}
+		}
+	}
+
+	// Second pass: Check by name patterns
+	for _, fieldData := range fields {
+		if fieldMap, ok := fieldData.(map[string]interface{}); ok {
+			fieldId, hasId := fieldMap["id"].(string)
+			fieldName, hasName := fieldMap["name"].(string)
+
+			if hasId && hasName {
+				// Only consider custom fields (customfield_*)
+				if strings.HasPrefix(fieldId, "customfield_") {
+					availableCustomFields = append(availableCustomFields, fmt.Sprintf("%s (%s)", fieldName, fieldId))
+
+					// Check field name
+					fieldNameLower := strings.ToLower(fieldName)
+					for _, pattern := range acceptancePatterns {
+						if strings.Contains(fieldNameLower, pattern) {
+							foundField = fieldId
+							fmt.Printf("✓ Campo de criterios de aceptación encontrado por patrón: %s (%s)\n", fieldName, fieldId)
+							break
+						}
+					}
+
+					// Also check field description if available
+					if foundField == "" {
+						if fieldDesc, ok := fieldMap["description"].(string); ok {
+							fieldDescLower := strings.ToLower(fieldDesc)
+							for _, pattern := range acceptancePatterns {
+								if strings.Contains(fieldDescLower, pattern) {
+									foundField = fieldId
+									fmt.Printf("✓ Campo de criterios de aceptación encontrado por descripción: %s (%s)\n", fieldName, fieldId)
+									break
+								}
+							}
+						}
+					}
+
+					if foundField != "" {
+						return foundField, nil
+					}
+				}
+			}
+		}
+	}
+
+	// Print available custom fields for debugging when field not found
+	fmt.Printf("Campos personalizados disponibles:\n")
+	for i, field := range availableCustomFields {
+		fmt.Printf("  %d. %s\n", i+1, field)
+		if i >= 14 { // Show more fields since we're only showing custom fields
+			fmt.Printf("  ... y %d campos más\n", len(availableCustomFields)-15)
+			break
 		}
 	}
 
@@ -558,7 +624,7 @@ func getAvailableIssueTypes(jiraURL, email, token, projectKey string) ([]IssueTy
 	var result []IssueTypeInfo
 	for _, issueTypeData := range issueTypes {
 		issueType := issueTypeData.(map[string]interface{})
-		
+
 		info := IssueTypeInfo{}
 		if id, ok := issueType["id"].(string); ok {
 			info.ID = id
@@ -602,7 +668,7 @@ func selectIssueType(reader *bufio.Reader, purpose string, issueTypes []IssueTyp
 
 	fmt.Printf("Tipos de issue disponibles para %s:\n", purpose)
 	fmt.Println()
-	
+
 	for i, issueType := range filtered {
 		description := issueType.Description
 		if description == "" {
@@ -614,7 +680,7 @@ func selectIssueType(reader *bufio.Reader, purpose string, issueTypes []IssueTyp
 
 	for {
 		input := promptForInput(reader, fmt.Sprintf("Seleccione el número para %s (1-%d)", purpose, len(filtered)), "1")
-		
+
 		if input == "" {
 			return filtered[0].Name
 		}

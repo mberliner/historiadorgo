@@ -2,6 +2,9 @@ package config
 
 import (
 	"bufio"
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -330,6 +333,280 @@ func TestHasRequiredEnvVars(t *testing.T) {
 			result := hasRequiredEnvVars()
 			if result != tt.expected {
 				t.Errorf("hasRequiredEnvVars() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestParseNumber(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected int
+	}{
+		{"valid number", "5", 5},
+		{"valid number with spaces", "  10  ", 10},
+		{"invalid string", "abc", 0},
+		{"empty string", "", 0},
+		{"negative number", "-5", -5},
+		{"zero", "0", 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := parseNumber(tt.input)
+			if result != tt.expected {
+				t.Errorf("parseNumber(%q) = %d, want %d", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestGetAvailableIssueTypes(t *testing.T) {
+	tests := []struct {
+		name           string
+		serverResponse string
+		statusCode     int
+		wantError      bool
+		wantCount      int
+	}{
+		{
+			name: "successful response with issue types",
+			serverResponse: `{
+				"projects": [{
+					"issuetypes": [
+						{"id": "1", "name": "Story", "description": "User story", "subtask": false},
+						{"id": "2", "name": "Bug", "description": "Software bug", "subtask": false},
+						{"id": "3", "name": "Sub-task", "description": "Sub-task", "subtask": true}
+					]
+				}]
+			}`,
+			statusCode: http.StatusOK,
+			wantError:  false,
+			wantCount:  3,
+		},
+		{
+			name:           "server error",
+			serverResponse: `{"error": "internal error"}`,
+			statusCode:     http.StatusInternalServerError,
+			wantError:      true,
+			wantCount:      0,
+		},
+		{
+			name:           "no projects",
+			serverResponse: `{"projects": []}`,
+			statusCode:     http.StatusOK,
+			wantError:      true,
+			wantCount:      0,
+		},
+		{
+			name:           "no issue types",
+			serverResponse: `{"projects": [{"issuetypes": []}]}`,
+			statusCode:     http.StatusOK,
+			wantError:      false,
+			wantCount:      0,
+		},
+		{
+			name:           "invalid json",
+			serverResponse: `{invalid json}`,
+			statusCode:     http.StatusOK,
+			wantError:      true,
+			wantCount:      0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tt.statusCode)
+				w.Write([]byte(tt.serverResponse))
+			}))
+			defer server.Close()
+
+			issueTypes, err := getAvailableIssueTypes(server.URL, "test@example.com", "token", "TEST")
+
+			if tt.wantError {
+				if err == nil {
+					t.Errorf("getAvailableIssueTypes() expected error but got none")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("getAvailableIssueTypes() unexpected error: %v", err)
+				return
+			}
+
+			if len(issueTypes) != tt.wantCount {
+				t.Errorf("getAvailableIssueTypes() got %d issue types, want %d", len(issueTypes), tt.wantCount)
+			}
+
+			if tt.wantCount > 0 {
+				if issueTypes[0].ID != "1" || issueTypes[0].Name != "Story" {
+					t.Errorf("getAvailableIssueTypes() got wrong first issue type: %+v", issueTypes[0])
+				}
+			}
+		})
+	}
+}
+
+func TestSelectIssueType(t *testing.T) {
+	issueTypes := []IssueTypeInfo{
+		{ID: "1", Name: "Story", Description: "User story", IsSubtask: false},
+		{ID: "2", Name: "Bug", Description: "Software bug", IsSubtask: false},
+		{ID: "3", Name: "Sub-task", Description: "Sub-task", IsSubtask: true},
+	}
+
+	tests := []struct {
+		name         string
+		input        string
+		purpose      string
+		onlySubtasks bool
+		expected     string
+	}{
+		{
+			name:         "select first option for stories",
+			input:        "1\n",
+			purpose:      "historias",
+			onlySubtasks: false,
+			expected:     "Story",
+		},
+		{
+			name:         "select second option for stories",
+			input:        "2\n",
+			purpose:      "historias",
+			onlySubtasks: false,
+			expected:     "Bug",
+		},
+		{
+			name:         "select subtask",
+			input:        "1\n",
+			purpose:      "subtareas",
+			onlySubtasks: true,
+			expected:     "Sub-task",
+		},
+		{
+			name:         "invalid then valid selection",
+			input:        "invalid\n5\n2\n",
+			purpose:      "historias",
+			onlySubtasks: false,
+			expected:     "Bug",
+		},
+		{
+			name:         "empty input defaults to first",
+			input:        "\n",
+			purpose:      "historias",
+			onlySubtasks: false,
+			expected:     "Story",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reader := bufio.NewReader(strings.NewReader(tt.input))
+			result := selectIssueType(reader, tt.purpose, issueTypes, tt.onlySubtasks)
+
+			if result != tt.expected {
+				t.Errorf("selectIssueType() = %q, want %q", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestSelectIssueType_NoValidTypes(t *testing.T) {
+	issueTypes := []IssueTypeInfo{
+		{ID: "1", Name: "Story", Description: "User story", IsSubtask: false},
+	}
+
+	reader := bufio.NewReader(strings.NewReader("Custom Type\n"))
+	result := selectIssueType(reader, "subtareas", issueTypes, true)
+
+	if result != "Custom Type" {
+		t.Errorf("selectIssueType() with no valid types = %q, want %q", result, "Custom Type")
+	}
+}
+
+func TestDetectAcceptanceCriteriaField_Interactive(t *testing.T) {
+	tests := []struct {
+		name           string
+		serverResponse string
+		statusCode     int
+		wantError      bool
+		expectedField  string
+	}{
+		{
+			name: "finds known acceptance criteria field",
+			serverResponse: `[
+				{"id": "customfield_10147", "name": "Acceptance Criteria", "description": "Field for acceptance criteria"},
+				{"id": "customfield_10001", "name": "Summary", "description": "Summary field"}
+			]`,
+			statusCode:    http.StatusOK,
+			wantError:     false,
+			expectedField: "customfield_10147",
+		},
+		{
+			name: "finds field by name pattern",
+			serverResponse: `[
+				{"id": "customfield_12345", "name": "Criterios de Aceptación", "description": "Spanish acceptance criteria"},
+				{"id": "customfield_20001", "name": "Summary", "description": "Summary field"}
+			]`,
+			statusCode:    http.StatusOK,
+			wantError:     false,
+			expectedField: "customfield_12345",
+		},
+		{
+			name: "no acceptance criteria field found",
+			serverResponse: `[
+				{"id": "customfield_20001", "name": "Summary", "description": "Summary field"},
+				{"id": "customfield_20002", "name": "Priority", "description": "Priority field"}
+			]`,
+			statusCode:    http.StatusOK,
+			wantError:     true,
+			expectedField: "",
+		},
+		{
+			name:           "server error",
+			serverResponse: `{"error": "internal error"}`,
+			statusCode:     http.StatusInternalServerError,
+			wantError:      true,
+			expectedField:  "",
+		},
+		{
+			name:           "invalid json response",
+			serverResponse: `{invalid json}`,
+			statusCode:     http.StatusOK,
+			wantError:      true,
+			expectedField:  "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tt.statusCode)
+				w.Write([]byte(tt.serverResponse))
+			}))
+			defer server.Close()
+
+			ctx := context.Background()
+			client := &http.Client{}
+
+			result, err := detectAcceptanceCriteriaField(ctx, client, server.URL, "test@example.com", "token", "TEST", "Story")
+
+			if tt.wantError {
+				if err == nil {
+					t.Errorf("detectAcceptanceCriteriaField() expected error but got none")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("detectAcceptanceCriteriaField() unexpected error: %v", err)
+				return
+			}
+
+			if result != tt.expectedField {
+				t.Errorf("detectAcceptanceCriteriaField() = %q, want %q", result, tt.expectedField)
 			}
 		})
 	}

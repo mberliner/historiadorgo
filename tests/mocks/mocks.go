@@ -2,6 +2,7 @@ package mocks
 
 import (
 	"context"
+	"time"
 	"historiadorgo/internal/domain/entities"
 )
 
@@ -127,4 +128,156 @@ func (m *MockFeatureManager) ValidateFeatureRequiredFields(ctx context.Context, 
 		return m.ValidateFeatureRequiredFieldsFunc(ctx, projectKey)
 	}
 	return nil, nil
+}
+
+// MockProcessFilesUseCase is a mock implementation of ProcessFilesUseCase
+type MockProcessFilesUseCase struct {
+	ExecuteFunc         func(ctx context.Context, filePath, projectKey string, dryRun bool) (*entities.BatchResult, error)
+	ProcessAllFilesFunc func(ctx context.Context, inputDir, projectKey string, dryRun bool) ([]*entities.BatchResult, error)
+}
+
+func (m *MockProcessFilesUseCase) Execute(ctx context.Context, filePath, projectKey string, dryRun bool) (*entities.BatchResult, error) {
+	if m.ExecuteFunc != nil {
+		return m.ExecuteFunc(ctx, filePath, projectKey, dryRun)
+	}
+	return nil, nil
+}
+
+func (m *MockProcessFilesUseCase) ProcessAllFiles(ctx context.Context, inputDir, projectKey string, dryRun bool) ([]*entities.BatchResult, error) {
+	if m.ProcessAllFilesFunc != nil {
+		return m.ProcessAllFilesFunc(ctx, inputDir, projectKey, dryRun)
+	}
+	return nil, nil
+}
+
+// MockValidateFileUseCase is a mock implementation of ValidateFileUseCase
+type MockValidateFileUseCase struct {
+	ExecuteFunc func(ctx context.Context, filePath, projectKey string) (*entities.BatchResult, error)
+}
+
+func (m *MockValidateFileUseCase) Execute(ctx context.Context, filePath, projectKey string) (*entities.BatchResult, error) {
+	if m.ExecuteFunc != nil {
+		return m.ExecuteFunc(ctx, filePath, projectKey)
+	}
+	return nil, nil
+}
+
+// MockTestConnectionUseCase is a mock implementation of TestConnectionUseCase
+type MockTestConnectionUseCase struct {
+	ExecuteFunc func(ctx context.Context) error
+}
+
+func (m *MockTestConnectionUseCase) Execute(ctx context.Context) error {
+	if m.ExecuteFunc != nil {
+		return m.ExecuteFunc(ctx)
+	}
+	return nil
+}
+
+// DiagnosisResult represents the result of feature diagnosis
+type DiagnosisResult struct {
+	ProjectKey     string
+	RequiredFields []string
+}
+
+// MockDiagnoseFeaturesUseCase is a mock implementation of DiagnoseFeaturesUseCase
+type MockDiagnoseFeaturesUseCase struct {
+	ExecuteFunc func(ctx context.Context, projectKey string) (*DiagnosisResult, error)
+}
+
+func (m *MockDiagnoseFeaturesUseCase) Execute(ctx context.Context, projectKey string) (*DiagnosisResult, error) {
+	if m.ExecuteFunc != nil {
+		return m.ExecuteFunc(ctx, projectKey)
+	}
+	return nil, nil
+}
+
+// MockLogger is a mock implementation of Logger
+type MockLogger struct {
+	LogCommandStartFunc        func(cmd string, params map[string]interface{})
+	LogCommandEndFunc          func(cmd string, success bool, duration time.Duration)
+	InfoFunc                   func(msg string)
+	WriteFormattedOutputFunc   func(output string)
+}
+
+func (m *MockLogger) LogCommandStart(cmd string, params map[string]interface{}) {
+	if m.LogCommandStartFunc != nil {
+		m.LogCommandStartFunc(cmd, params)
+	}
+}
+
+func (m *MockLogger) LogCommandEnd(cmd string, success bool, duration time.Duration) {
+	if m.LogCommandEndFunc != nil {
+		m.LogCommandEndFunc(cmd, success, duration)
+	}
+}
+
+func (m *MockLogger) Info(msg string) {
+	if m.InfoFunc != nil {
+		m.InfoFunc(msg)
+	}
+}
+
+func (m *MockLogger) WriteFormattedOutput(output string) {
+	if m.WriteFormattedOutputFunc != nil {
+		m.WriteFormattedOutputFunc(output)
+	}
+}
+
+// MockOutputFormatter is a mock implementation of OutputFormatter
+type MockOutputFormatter struct {
+	FormatBatchResultFunc           func(result *entities.BatchResult) string
+	FormatMultipleBatchResultsFunc  func(results []*entities.BatchResult) string
+	FormatValidationFunc            func(result *entities.BatchResult) string
+	FormatConnectionTestFunc        func(success bool, error string) string
+	FormatDiagnosisFunc             func(result *DiagnosisResult) string
+}
+
+func (m *MockOutputFormatter) FormatBatchResult(result *entities.BatchResult) string {
+	if m.FormatBatchResultFunc != nil {
+		return m.FormatBatchResultFunc(result)
+	}
+	return ""
+}
+
+func (m *MockOutputFormatter) FormatMultipleBatchResults(results []*entities.BatchResult) string {
+	if m.FormatMultipleBatchResultsFunc != nil {
+		return m.FormatMultipleBatchResultsFunc(results)
+	}
+	return ""
+}
+
+func (m *MockOutputFormatter) FormatValidation(result *entities.BatchResult) string {
+	if m.FormatValidationFunc != nil {
+		return m.FormatValidationFunc(result)
+	}
+	return ""
+}
+
+func (m *MockOutputFormatter) FormatConnectionTest(success bool, error string) string {
+	if m.FormatConnectionTestFunc != nil {
+		return m.FormatConnectionTestFunc(success, error)
+	}
+	return ""
+}
+
+func (m *MockOutputFormatter) FormatDiagnosis(result *DiagnosisResult) string {
+	if m.FormatDiagnosisFunc != nil {
+		return m.FormatDiagnosisFunc(result)
+	}
+	return ""
+}
+
+// MockConfig is a mock implementation of Config
+type MockConfig struct {
+	ProjectKey      string
+	InputDirectory  string
+}
+
+func (m *MockConfig) GetProjectKey() string {
+	return m.ProjectKey
+}
+
+func (m *MockConfig) GetInputDirectory() string {
+	return m.InputDirectory
 }

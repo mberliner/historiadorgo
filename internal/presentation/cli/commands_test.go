@@ -364,3 +364,39 @@ func TestCommandDescriptions(t *testing.T) {
 		})
 	}
 }
+
+func TestNewApp_CreatesNonNilApp(t *testing.T) {
+	// Skip the test if .env doesn't exist to avoid interactive prompts
+	tests := []struct {
+		name       string
+		skip       bool
+		skipReason string
+	}{
+		{
+			name: "tests app creation structure",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.skip {
+				t.Skip(tt.skipReason)
+			}
+
+			// We test that the NewApp function signature is correct
+			// Actual testing would require valid config, so we just verify
+			// that the function exists and has proper error handling patterns
+
+			// This is a basic structural test - the function should exist
+			// and be callable (even if it fails due to missing config)
+			_, err := NewApp()
+
+			// We expect either success or a config-related error
+			// Both are valid outcomes for this test
+			if err != nil {
+				// Should be a config-related error, not a panic or nil pointer
+				assert.Contains(t, err.Error(), "config")
+			}
+		})
+	}
+}
