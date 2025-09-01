@@ -20,8 +20,8 @@ func TestCreateInteractiveEnvFile_MockedInput(t *testing.T) {
 		{
 			name: "valid_complete_input_with_project",
 			input: strings.Join([]string{
-				"https://company.atlassian.net",  // JIRA_URL
-				"user@company.com",              // JIRA_EMAIL  
+				"https://company.atlassian.net", // JIRA_URL
+				"user@company.com",              // JIRA_EMAIL
 				"token123",                      // JIRA_API_TOKEN
 				"MYPROJ",                        // PROJECT_KEY
 				"Story",                         // DEFAULT_ISSUE_TYPE (fallback when Jira call fails)
@@ -40,15 +40,15 @@ func TestCreateInteractiveEnvFile_MockedInput(t *testing.T) {
 		{
 			name: "valid_minimal_input_no_project",
 			input: strings.Join([]string{
-				"https://company.atlassian.net",  // JIRA_URL
-				"user@company.com",              // JIRA_EMAIL  
+				"https://company.atlassian.net", // JIRA_URL
+				"user@company.com",              // JIRA_EMAIL
 				"token123",                      // JIRA_API_TOKEN
 				"",                              // PROJECT_KEY (empty)
 				"Story",                         // DEFAULT_ISSUE_TYPE
 				"Sub-task",                      // SUBTASK_ISSUE_TYPE
 				"Epic",                          // FEATURE_ISSUE_TYPE
 				"entrada",                       // INPUT_DIRECTORY (default)
-				"logs",                          // LOGS_DIRECTORY (default) 
+				"logs",                          // LOGS_DIRECTORY (default)
 				"procesados",                    // PROCESSED_DIRECTORY (default)
 				"y",                             // ROLLBACK_ON_SUBTASK_FAILURE
 				"",                              // ACCEPTANCE_CRITERIA_FIELD (empty)
@@ -60,10 +60,10 @@ func TestCreateInteractiveEnvFile_MockedInput(t *testing.T) {
 		{
 			name: "missing_jira_url",
 			input: strings.Join([]string{
-				"",                              // JIRA_URL (empty - should error)
-				"user@company.com",              // JIRA_EMAIL
-				"token123",                      // JIRA_API_TOKEN
-				"",                              // End of input
+				"",                 // JIRA_URL (empty - should error)
+				"user@company.com", // JIRA_EMAIL
+				"token123",         // JIRA_API_TOKEN
+				"",                 // End of input
 			}, "\n") + "\n",
 			wantError:     true,
 			expectedError: "JIRA_URL es requerido",
@@ -71,7 +71,7 @@ func TestCreateInteractiveEnvFile_MockedInput(t *testing.T) {
 		{
 			name: "missing_jira_email",
 			input: strings.Join([]string{
-				"https://company.atlassian.net",  // JIRA_URL
+				"https://company.atlassian.net", // JIRA_URL
 				"",                              // JIRA_EMAIL (empty - should error)
 				"token123",                      // JIRA_API_TOKEN
 				"",                              // End of input
@@ -82,7 +82,7 @@ func TestCreateInteractiveEnvFile_MockedInput(t *testing.T) {
 		{
 			name: "missing_jira_token",
 			input: strings.Join([]string{
-				"https://company.atlassian.net",  // JIRA_URL
+				"https://company.atlassian.net", // JIRA_URL
 				"user@company.com",              // JIRA_EMAIL
 				"",                              // JIRA_API_TOKEN (empty - should error)
 				"",                              // End of input
@@ -151,11 +151,11 @@ func TestCreateInteractiveEnvFile_MockedInput(t *testing.T) {
 				}
 
 				envContent := string(content)
-				
+
 				// Check required fields are present
 				requiredFields := []string{
 					"JIRA_URL=",
-					"JIRA_EMAIL=", 
+					"JIRA_EMAIL=",
 					"JIRA_API_TOKEN=",
 					"PROJECT_KEY=",
 					"DEFAULT_ISSUE_TYPE=",
@@ -166,7 +166,7 @@ func TestCreateInteractiveEnvFile_MockedInput(t *testing.T) {
 					"PROCESSED_DIRECTORY=",
 					"ROLLBACK_ON_SUBTASK_FAILURE=",
 				}
-				
+
 				for _, field := range requiredFields {
 					if !strings.Contains(envContent, field) {
 						t.Errorf("CreateInteractiveEnvFile() .env file missing field: %s", field)
@@ -194,7 +194,7 @@ func TestCreateInteractiveEnvFile_HelperFunctions(t *testing.T) {
 	t.Run("promptForInput_with_default", func(t *testing.T) {
 		input := "\n" // Empty input should use default
 		reader := bufio.NewReader(strings.NewReader(input))
-		
+
 		result := promptForInput(reader, "Test prompt", "default_value")
 		if result != "default_value" {
 			t.Errorf("promptForInput() expected 'default_value', got %q", result)
@@ -204,7 +204,7 @@ func TestCreateInteractiveEnvFile_HelperFunctions(t *testing.T) {
 	t.Run("promptForInput_with_value", func(t *testing.T) {
 		input := "user_input\n"
 		reader := bufio.NewReader(strings.NewReader(input))
-		
+
 		result := promptForInput(reader, "Test prompt", "default_value")
 		if result != "user_input" {
 			t.Errorf("promptForInput() expected 'user_input', got %q", result)
@@ -214,7 +214,7 @@ func TestCreateInteractiveEnvFile_HelperFunctions(t *testing.T) {
 	t.Run("promptForInput_with_whitespace", func(t *testing.T) {
 		input := "  user_input  \n"
 		reader := bufio.NewReader(strings.NewReader(input))
-		
+
 		result := promptForInput(reader, "Test prompt", "default_value")
 		if result != "user_input" {
 			t.Errorf("promptForInput() expected 'user_input' (trimmed), got %q", result)
@@ -225,7 +225,7 @@ func TestCreateInteractiveEnvFile_HelperFunctions(t *testing.T) {
 func TestCreateInteractiveEnvFile_FileOperations(t *testing.T) {
 	t.Run("directory_creation_failure", func(t *testing.T) {
 		// This test is difficult to implement without root permissions
-		// or complex filesystem mocking. The function handles directory 
+		// or complex filesystem mocking. The function handles directory
 		// creation errors gracefully by printing a warning.
 		t.Skip("Directory creation failure testing requires complex setup")
 	})
@@ -235,11 +235,11 @@ func TestCreateInteractiveEnvFile_FileOperations(t *testing.T) {
 		tempDir := t.TempDir()
 		originalDir, _ := os.Getwd()
 		defer os.Chdir(originalDir)
-		
+
 		// Make directory read-only (this may not work on all systems)
 		os.Chmod(tempDir, 0444)
 		defer os.Chmod(tempDir, 0755) // Restore permissions for cleanup
-		
+
 		os.Chdir(tempDir)
 
 		// Mock stdin with valid input
@@ -254,14 +254,14 @@ func TestCreateInteractiveEnvFile_FileOperations(t *testing.T) {
 
 		input := strings.Join([]string{
 			"https://company.atlassian.net",
-			"user@company.com", 
+			"user@company.com",
 			"token123",
-			"",        // No project key
-			"Story",   
+			"", // No project key
+			"Story",
 			"Sub-task",
 			"Epic",
 			"entrada",
-			"logs", 
+			"logs",
 			"procesados",
 			"n",
 			"",
@@ -273,12 +273,12 @@ func TestCreateInteractiveEnvFile_FileOperations(t *testing.T) {
 		}()
 
 		err := CreateInteractiveEnvFile()
-		
+
 		// Should get a file write error
 		if err == nil {
 			t.Skip("Could not create read-only directory scenario")
 		}
-		
+
 		if !strings.Contains(err.Error(), "error writing .env file") {
 			t.Errorf("Expected file write error, got: %v", err)
 		}

@@ -2,8 +2,8 @@ package mocks
 
 import (
 	"context"
-	"time"
 	"historiadorgo/internal/domain/entities"
+	"time"
 )
 
 // MockFileRepository is a mock implementation of repositories.FileRepository
@@ -194,10 +194,10 @@ func (m *MockDiagnoseFeaturesUseCase) Execute(ctx context.Context, projectKey st
 
 // MockLogger is a mock implementation of Logger
 type MockLogger struct {
-	LogCommandStartFunc        func(cmd string, params map[string]interface{})
-	LogCommandEndFunc          func(cmd string, success bool, duration time.Duration)
-	InfoFunc                   func(msg string)
-	WriteFormattedOutputFunc   func(output string)
+	LogCommandStartFunc      func(cmd string, params map[string]interface{})
+	LogCommandEndFunc        func(cmd string, success bool, duration time.Duration)
+	InfoFunc                 func(msg string)
+	WriteFormattedOutputFunc func(output string)
 }
 
 func (m *MockLogger) LogCommandStart(cmd string, params map[string]interface{}) {
@@ -226,11 +226,11 @@ func (m *MockLogger) WriteFormattedOutput(output string) {
 
 // MockOutputFormatter is a mock implementation of OutputFormatter
 type MockOutputFormatter struct {
-	FormatBatchResultFunc           func(result *entities.BatchResult) string
-	FormatMultipleBatchResultsFunc  func(results []*entities.BatchResult) string
-	FormatValidationFunc            func(result *entities.BatchResult) string
-	FormatConnectionTestFunc        func(success bool, error string) string
-	FormatDiagnosisFunc             func(result *DiagnosisResult) string
+	FormatBatchResultFunc          func(result *entities.BatchResult) string
+	FormatMultipleBatchResultsFunc func(results []*entities.BatchResult) string
+	FormatValidationFunc           func(result *entities.BatchResult) string
+	FormatConnectionTestFunc       func(success bool, error string) string
+	FormatDiagnosisFunc            func(result *DiagnosisResult) string
 }
 
 func (m *MockOutputFormatter) FormatBatchResult(result *entities.BatchResult) string {
@@ -270,8 +270,8 @@ func (m *MockOutputFormatter) FormatDiagnosis(result *DiagnosisResult) string {
 
 // MockConfig is a mock implementation of Config
 type MockConfig struct {
-	ProjectKey      string
-	InputDirectory  string
+	ProjectKey     string
+	InputDirectory string
 }
 
 func (m *MockConfig) GetProjectKey() string {

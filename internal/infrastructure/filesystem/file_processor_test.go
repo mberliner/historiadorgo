@@ -680,7 +680,7 @@ Test Story 2,Test Description 2,,Task 3,PROJ-125`
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			filePath := tt.setupFile()
-			
+
 			stories, err := fp.readCSV(filePath)
 
 			if tt.expectedErr == "" {
@@ -746,7 +746,7 @@ Invalid Excel Data`
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			filePath := tt.setupFile()
-			
+
 			stories, err := fp.readExcel(filePath)
 
 			if tt.expectedErr == "" {

@@ -1070,7 +1070,7 @@ func TestJiraClient_TestConnection_NetworkErrors(t *testing.T) {
 				cfg := createTestConfig()
 				cfg.JiraURL = "://invalid-url"
 				client := NewJiraClient(cfg)
-				
+
 				err := client.TestConnection(context.Background())
 				if err == nil {
 					t.Error("Expected error, got nil")
@@ -1140,7 +1140,7 @@ func TestJiraClient_ValidateProject_NetworkErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			client, projectKey := tt.setupFunc()
-			
+
 			err := client.ValidateProject(context.Background(), projectKey)
 			if err == nil {
 				t.Error("Expected error, got nil")
@@ -1258,12 +1258,12 @@ func TestJiraClient_ValidateFeatureIssueType_ErrorPaths(t *testing.T) {
 
 func TestJiraClient_buildIssuePayload_VariousScenarios(t *testing.T) {
 	tests := []struct {
-		name                         string
-		acceptanceCriteriaField      string
-		parent                       string
-		expectedHasAcceptanceField   bool
-		expectedHasParent            bool
-		expectedDescriptionIncludes  string
+		name                        string
+		acceptanceCriteriaField     string
+		parent                      string
+		expectedHasAcceptanceField  bool
+		expectedHasParent           bool
+		expectedDescriptionIncludes string
 	}{
 		{
 			name:                        "no_acceptance_criteria_field",

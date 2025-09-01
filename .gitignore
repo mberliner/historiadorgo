@@ -37,3 +37,6 @@ coverage*
 # Archivos del SO
 .DS_Store
 Thumbs.db
+
+#Reportes de seguridad
+security-reports/

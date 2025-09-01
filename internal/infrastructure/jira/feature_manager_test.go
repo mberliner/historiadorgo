@@ -1145,7 +1145,7 @@ func TestFeatureManager_SearchExistingFeature_EdgeCases(t *testing.T) {
 					},
 				},
 				{
-					Key: "PROJ-124", 
+					Key: "PROJ-124",
 					Fields: map[string]interface{}{
 						"summary": "Different Feature",
 					},
