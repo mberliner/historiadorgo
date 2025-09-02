@@ -16,7 +16,7 @@ help: ## Mostrar este mensaje de ayuda
 build: ## Compilar la aplicación
 	@echo "🔨 Compilando $(BINARY_NAME)..."
 	@mkdir -p $(BUILD_DIR)
-	go build -o $(BUILD_DIR)/$(BINARY_NAME) $(MAIN_PATH)
+	CGO_ENABLED=0 go build -ldflags="-s -w" -o $(BUILD_DIR)/$(BINARY_NAME) $(MAIN_PATH)
 	@echo "✅ Compilación exitosa: $(BUILD_DIR)/$(BINARY_NAME)"
 
 run: build ## Compilar y ejecutar
@@ -50,10 +50,10 @@ lint: fmt vet ## Ejecutar linting completo
 # Comandos de construcción
 .PHONY: build-linux build-windows build-darwin build-all
 
-build-linux: ## Compilar para Linux
-	@echo "🐧 Compilando para Linux..."
+build-linux: ## Compilar para Linux (static)
+	@echo "🐧 Compilando para Linux (static)..."
 	@mkdir -p $(DIST_DIR)
-	GOOS=linux GOARCH=amd64 go build -o $(DIST_DIR)/$(BINARY_NAME)-linux-amd64 $(MAIN_PATH)
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o $(DIST_DIR)/$(BINARY_NAME)-linux-amd64 $(MAIN_PATH)
 
 build-windows: ## Compilar para Windows
 	@echo "🪟 Compilando para Windows..."

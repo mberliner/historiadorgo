@@ -241,10 +241,11 @@ jobs:
 
       - name: Build binary
         env:
+          CGO_ENABLED: 0
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
         run: |
-          echo "🔨 Building for $GOOS/$GOARCH..."
+          echo "🔨 Building static binary for $GOOS/$GOARCH..."
           mkdir -p dist
           go build -ldflags="-s -w" -o dist/${{ matrix.binary }} cmd/main.go
           echo "✅ Build completed: dist/${{ matrix.binary }}"
