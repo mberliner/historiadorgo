@@ -179,7 +179,9 @@ func (l *Logger) WriteFormattedOutput(output string) {
 	if l.logFile != nil {
 		timestamp := time.Now().Format("2006-01-02 15:04:05")
 		formattedOutput := fmt.Sprintf("\n=== SALIDA COMANDO [%s] ===\n%s=== FIN SALIDA ===\n\n", timestamp, output)
-		l.logFile.WriteString(formattedOutput)
+		if _, err := l.logFile.WriteString(formattedOutput); err != nil {
+			l.WithError(err).Error("Error writing formatted output to log file")
+		}
 	}
 }
 

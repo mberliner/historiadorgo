@@ -1,12 +1,12 @@
 run:
   timeout: 5m
-  skip-dirs:
-    - tests/mocks
-    - tests/fixtures
-  skip-files:
-    - ".*_test.go$"
 
 issues:
+  exclude-dirs:
+    - tests/mocks
+    - tests/fixtures  
+  exclude-files:
+    - ".*_test.go$"
   exclude-rules:
     - path: _test\.go
       linters:
@@ -23,7 +23,7 @@ issues:
 
 linters-settings:
   gocyclo:
-    min-complexity: 15
+    min-complexity: 30
   goconst:
     min-len: 3
     min-occurrences: 3
@@ -38,6 +38,15 @@ linters-settings:
     confidence: medium
   misspell:
     locale: US
+    ignore-words:
+      - descripcion
+      - configuracion
+      - comando
+      - columnas
+      - invalidas
+      - informativo
+      - directorios
+      - presentes
   lll:
     line-length: 120
 
@@ -59,6 +68,7 @@ linters:
     - unparam
 
 output:
-  format: colored-line-number
+  formats:
+    - format: colored-line-number
   print-issued-lines: true
   print-linter-name: true

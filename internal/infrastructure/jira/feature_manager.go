@@ -141,14 +141,20 @@ func (fm *FeatureManager) ValidateFeatureRequiredFields(ctx context.Context, pro
 		return nil, fmt.Errorf("no projects found in create meta")
 	}
 
-	project := projects[0].(map[string]interface{})
+	project, ok := projects[0].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("invalid project data structure")
+	}
 	issueTypes, ok := project["issuetypes"].([]interface{})
 	if !ok {
 		return nil, fmt.Errorf("no issue types found")
 	}
 
 	for _, issueTypeData := range issueTypes {
-		issueType := issueTypeData.(map[string]interface{})
+		issueType, ok := issueTypeData.(map[string]interface{})
+		if !ok {
+			continue
+		}
 		if name, ok := issueType["name"].(string); ok && name == fm.config.FeatureIssueType {
 			fields, ok := issueType["fields"].(map[string]interface{})
 			if !ok {

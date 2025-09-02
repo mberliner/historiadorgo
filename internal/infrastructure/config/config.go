@@ -269,7 +269,7 @@ DRY_RUN=false
 		inputDir, logsDir, processedDir, rollback)
 
 	// Write .env file
-	if err := os.WriteFile(".env", []byte(envContent), 0644); err != nil {
+	if err := os.WriteFile(".env", []byte(envContent), 0600); err != nil {
 		return fmt.Errorf("error writing .env file: %w", err)
 	}
 
@@ -366,7 +366,7 @@ func DetectJiraConfiguration(jiraURL, jiraEmail, jiraToken, projectKey, storyTyp
 }
 
 // detectAcceptanceCriteriaField detects the acceptance criteria custom field
-func detectAcceptanceCriteriaField(ctx context.Context, client *http.Client, baseURL, email, token, projectKey, storyType string) (string, error) {
+func detectAcceptanceCriteriaField(ctx context.Context, client *http.Client, baseURL, email, token, _ /* projectKey */, _ /* storyType */ string) (string, error) {
 	// Get all fields for the project (includes optional custom fields)
 	endpoint := fmt.Sprintf("%s/rest/api/3/field", baseURL)
 
@@ -520,14 +520,20 @@ func detectFeatureRequiredFields(ctx context.Context, client *http.Client, baseU
 		return "", fmt.Errorf("no projects found")
 	}
 
-	project := projects[0].(map[string]interface{})
+	project, ok := projects[0].(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("invalid project data structure")
+	}
 	issueTypes, ok := project["issuetypes"].([]interface{})
 	if !ok {
 		return "", fmt.Errorf("no issue types found")
 	}
 
 	for _, issueTypeData := range issueTypes {
-		issueType := issueTypeData.(map[string]interface{})
+		issueType, ok := issueTypeData.(map[string]interface{})
+		if !ok {
+			continue
+		}
 		if name, ok := issueType["name"].(string); ok && name == featureType {
 			fields, ok := issueType["fields"].(map[string]interface{})
 			if !ok {
@@ -615,7 +621,10 @@ func getAvailableIssueTypes(jiraURL, email, token, projectKey string) ([]IssueTy
 		return nil, fmt.Errorf("no projects found")
 	}
 
-	project := projects[0].(map[string]interface{})
+	project, ok := projects[0].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("invalid project data structure")
+	}
 	issueTypes, ok := project["issuetypes"].([]interface{})
 	if !ok {
 		return nil, fmt.Errorf("no issue types found")
@@ -623,7 +632,10 @@ func getAvailableIssueTypes(jiraURL, email, token, projectKey string) ([]IssueTy
 
 	var result []IssueTypeInfo
 	for _, issueTypeData := range issueTypes {
-		issueType := issueTypeData.(map[string]interface{})
+		issueType, ok := issueTypeData.(map[string]interface{})
+		if !ok {
+			continue
+		}
 
 		info := IssueTypeInfo{}
 		if id, ok := issueType["id"].(string); ok {

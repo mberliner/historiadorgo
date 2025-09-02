@@ -7,10 +7,17 @@ import (
 	"path/filepath"
 	"strings"
 
+	"historiadorgo/internal/domain/entities"
+
 	"github.com/go-playground/validator/v10"
 	"github.com/gocarina/gocsv"
 	"github.com/xuri/excelize/v2"
-	"historiadorgo/internal/domain/entities"
+)
+
+const (
+	csvExtension  = ".csv"
+	xlsxExtension = ".xlsx"
+	xlsExtension  = ".xls"
 )
 
 type FileProcessor struct {
@@ -37,9 +44,9 @@ func (fp *FileProcessor) ReadFile(ctx context.Context, filePath string) ([]*enti
 	ext := strings.ToLower(filepath.Ext(filePath))
 
 	switch ext {
-	case ".csv":
+	case csvExtension:
 		return fp.readCSV(filePath)
-	case ".xlsx", ".xls":
+	case xlsxExtension, xlsExtension:
 		return fp.readExcel(filePath)
 	default:
 		return nil, fmt.Errorf("unsupported file format: %s", ext)
@@ -52,8 +59,8 @@ func (fp *FileProcessor) ValidateFile(ctx context.Context, filePath string) erro
 	}
 
 	ext := strings.ToLower(filepath.Ext(filePath))
-	if ext != ".csv" && ext != ".xlsx" && ext != ".xls" {
-		return fmt.Errorf("unsupported file format: %s. Supported formats: .csv, .xlsx, .xls", ext)
+	if ext != csvExtension && ext != xlsxExtension && ext != xlsExtension {
+		return fmt.Errorf("unsupported file format: %s. Supported formats: %s, %s, %s", ext, csvExtension, xlsxExtension, xlsExtension)
 	}
 
 	stories, err := fp.ReadFile(ctx, filePath)

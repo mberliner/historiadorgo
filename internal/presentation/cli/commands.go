@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/spf13/cobra"
 	"historiadorgo/internal/application/usecases"
 	"historiadorgo/internal/domain/entities"
 	"historiadorgo/internal/infrastructure/config"
@@ -13,6 +12,8 @@ import (
 	"historiadorgo/internal/infrastructure/jira"
 	"historiadorgo/internal/infrastructure/logger"
 	"historiadorgo/internal/presentation/formatters"
+
+	"github.com/spf13/cobra"
 )
 
 type App struct {
