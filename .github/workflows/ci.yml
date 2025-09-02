@@ -169,12 +169,22 @@ jobs:
       - name: Run Gosec Security Scanner
         run: |
           gosec -fmt sarif -out gosec.sarif ./... || echo "⚠️ Gosec found potential security issues"
+          echo "📊 Security scan completed. Results saved to gosec.sarif"
+          
+      - name: Show Gosec Summary
+        if: always()
+        run: |
+          if [ -f gosec.sarif ]; then
+            echo "🔍 Gosec Security Summary:"
+            gosec -fmt text ./... 2>/dev/null | tail -10 || echo "Summary not available"
+          fi
           
       - name: Upload Gosec results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
         if: always() && hashFiles('gosec.sarif') != ''
         with:
           sarif_file: gosec.sarif
+        continue-on-error: true
 
       - name: Install Nancy (dependency vulnerability scanner)
         run: |
