@@ -1,0 +1,329 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+  workflow_dispatch:
+
+env:
+  GO_VERSION: '1.23.0'
+  COVERAGE_THRESHOLD: 80
+
+jobs:
+  # Job 1: Code Quality and Linting
+  code-quality:
+    name: Code Quality (fmt, vet, lint)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Verify dependencies
+        run: go mod verify
+
+      - name: Run go mod tidy
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum || (echo "❌ go.mod or go.sum files are not up to date. Run 'go mod tidy' locally." && exit 1)
+
+      - name: Format code (go fmt)
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "❌ The following files are not formatted:"
+            echo "$unformatted"
+            echo ""
+            echo "Run 'make fmt' or 'go fmt ./...' to fix formatting."
+            exit 1
+          fi
+          echo "✅ All files are properly formatted"
+
+      - name: Static analysis (go vet)
+        run: |
+          go vet ./...
+          if [ $? -ne 0 ]; then
+            echo "❌ Static analysis failed. Fix the issues reported by 'go vet'."
+            exit 1
+          fi
+          echo "✅ Static analysis passed"
+
+      - name: Install golangci-lint
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.55.2
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+
+      - name: Run golangci-lint
+        run: |
+          golangci-lint run --timeout=5m --config=.golangci.yml || (echo "❌ Linting failed. Fix the issues reported by golangci-lint." && exit 1)
+          echo "✅ Linting completed successfully"
+
+  # Job 2: Test with Coverage
+  test-coverage:
+    name: Tests with Coverage (≥80%)
+    runs-on: ubuntu-latest
+    needs: code-quality
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run tests with coverage
+        run: |
+          echo "🧪 Running tests with coverage..."
+          go test -v -race -cover ./... -coverprofile=coverage.out -coverpkg=./internal/... || (echo "❌ Tests failed" && exit 1)
+
+      - name: Generate coverage report
+        run: |
+          go tool cover -html=coverage.out -o coverage.html
+          go tool cover -func=coverage.out -o coverage.txt
+
+      - name: Check coverage threshold
+        run: |
+          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+          echo "📊 Current coverage: ${COVERAGE}%"
+          if (( $(echo "$COVERAGE < $COVERAGE_THRESHOLD" | bc -l) )); then
+            echo "❌ Coverage ${COVERAGE}% is below threshold ${COVERAGE_THRESHOLD}%"
+            echo "Fix coverage by adding more tests or use 'coverage-fix-agent ${COVERAGE_THRESHOLD}'"
+            exit 1
+          fi
+          echo "✅ Coverage ${COVERAGE}% meets threshold ${COVERAGE_THRESHOLD}%"
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.out
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            coverage.out
+            coverage.html
+            coverage.txt
+
+  # Job 3: Security Analysis
+  security:
+    name: Security Analysis
+    runs-on: ubuntu-latest
+    needs: code-quality
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run Gosec Security Scanner
+        uses: securecodewarrior/github-action-gosec@master
+        with:
+          args: '-fmt sarif -out gosec.sarif ./...'
+
+      - name: Upload Gosec results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: gosec.sarif
+
+      - name: Install Nancy (dependency vulnerability scanner)
+        run: |
+          go install github.com/sonatypecommunity/nancy@latest
+
+      - name: Run Nancy vulnerability scan
+        run: |
+          go list -json -deps ./... | nancy sleuth --skip-update-check || (echo "❌ Vulnerability scan failed. Check dependencies for known vulnerabilities." && exit 1)
+          echo "✅ No known vulnerabilities found in dependencies"
+
+      - name: Install govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Run govulncheck
+        run: |
+          govulncheck ./... || (echo "❌ Vulnerability check failed with govulncheck" && exit 1)
+          echo "✅ No vulnerabilities found with govulncheck"
+
+      - name: Check for secrets/credentials
+        run: |
+          echo "🔍 Checking for potential secrets..."
+          # Check for common secret patterns
+          if grep -r -E "(password|secret|token|key|api_key)" --include="*.go" --exclude-dir=".git" --exclude="*_test.go" . | grep -v "// " | grep -v "TODO" | grep -v "EXAMPLE"; then
+            echo "⚠️  Potential secrets found. Review the above matches."
+            echo "Consider using environment variables or secure secret management."
+          fi
+          # This is a warning, not a failure
+          echo "✅ Secret scan completed"
+
+  # Job 4: Build Binary
+  build:
+    name: Build Binary
+    runs-on: ubuntu-latest
+    needs: [code-quality, test-coverage, security]
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            binary: historiador
+          - goos: windows
+            goarch: amd64
+            binary: historiador.exe
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          echo "🔨 Building for $GOOS/$GOARCH..."
+          mkdir -p dist
+          go build -ldflags="-s -w" -o dist/${{ matrix.binary }} cmd/main.go
+          echo "✅ Build completed: dist/${{ matrix.binary }}"
+
+      - name: Test binary execution
+        if: matrix.goos == 'linux'
+        run: |
+          echo "🧪 Testing binary execution..."
+          chmod +x dist/historiador
+          ./dist/historiador --help > /dev/null || (echo "❌ Binary execution test failed" && exit 1)
+          echo "✅ Binary execution test passed"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.binary }}
+          path: dist/${{ matrix.binary }}
+
+  # Job 5: Integration Tests (optional, simulates real usage)
+  integration-test:
+    name: Integration Test
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download Linux binary artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: historiador
+          path: dist/
+
+      - name: Integration test
+        run: |
+          chmod +x dist/historiador
+          echo "🧪 Running integration tests..."
+          
+          # Test help command
+          ./dist/historiador --help || (echo "❌ Help command failed" && exit 1)
+          
+          # Test validation with sample data (if available)
+          if [ -f "tests/fixtures/sample.csv" ]; then
+            echo "Testing file validation..."
+            ./dist/historiador validate -f tests/fixtures/sample.csv --dry-run || true
+          fi
+          
+          echo "✅ Integration tests completed"
+
+  # Job 6: Release (only on tags)
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [build, integration-test]
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release/
+          cp artifacts/historiador/historiador release/
+          cp artifacts/historiador.exe/historiador.exe release/
+          ls -la release/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          body: |
+            ## Historiador Go ${{ github.ref_name }}
+            
+            ### Changes
+            Automatically generated release from CI pipeline.
+            
+            ### Downloads
+            - **Linux (x64)**: `historiador`  
+            - **Windows (x64)**: `historiador.exe`
+            
+            ### Installation
+            1. Download the appropriate binary for your system
+            2. Make it executable: `chmod +x historiador` (Linux)  
+            3. Move to PATH: `sudo mv historiador /usr/local/bin/` (Linux)
+            4. Run: `historiador --help`
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
