@@ -38,5 +38,7 @@ coverage*
 .DS_Store
 Thumbs.db
 
-#Reportes de seguridad
+# Reportes de seguridad
 security-reports/
+*.sarif
+gosec.sarif
