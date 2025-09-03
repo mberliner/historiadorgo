@@ -12,8 +12,13 @@
       "Bash(go build:*)",
       "Bash(go tool cover:*)",
       "Bash(go mod tidy)",
-      "Bash(make fmt)",
-      "Bash(make vet)"
+      "Bash(go list:*)",
+      "Bash(gofmt:*)",
+      "Bash(time:*)",
+      "Bash(wc:*)",
+      "Bash(find:*)",
+      "Bash(ls:*)",
+      "Bash(golangci-lint:*)"
     ]
   }
 }

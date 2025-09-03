@@ -20,6 +20,9 @@ issues:
     - linters: 
         - typecheck
       text: "WithFields undefined"
+    - linters: 
+        - typecheck
+      text: "WithError undefined"
 
 linters-settings:
   gocyclo:
