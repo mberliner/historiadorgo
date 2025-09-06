@@ -4,8 +4,22 @@ on:
   push:
     branches: [ main, master ]
     tags: [ 'v*' ]
+    paths-ignore:
+      - '**/*.md'
+      - '.claude/**/*.md'
+      - 'docs/**'
+      - 'README*'
+      - 'CHANGELOG*'
+      - 'LICENSE*'
   pull_request:
     branches: [ main, master ]
+    paths-ignore:
+      - '**/*.md'
+      - '.claude/**/*.md'
+      - 'docs/**'
+      - 'README*'
+      - 'CHANGELOG*'
+      - 'LICENSE*'
   workflow_dispatch:
 
 permissions:
