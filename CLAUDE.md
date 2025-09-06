@@ -121,35 +121,31 @@ Los tests siguen las mismas capas arquitectónicas:
 - Fixtures de test en `tests/fixtures/`
 - Estructura de tests de integración en `tests/unit/`
 
-## Agentes Personalizados
+## Comandos Automatizados
 
-Los siguientes "agentes" están definidos como secuencias de comandos especializadas que Claude debe ejecutar cuando el usuario las solicite:
+Los siguientes comandos están definidos como secuencias automatizadas que Claude debe ejecutar cuando el usuario las solicite:
 
-### qa-agent
-**Comando**: `qa-agent`
-**Propósito**: Agente de calidad completa para validación de código
+### qa-simple
+**Comando**: `qa-simple`
+**Propósito**: QA básica con comandos directos
+**Equivalente AI**: Para análisis profundo usa `qa-analyzer` (.claude/agents/)
 
 **Secuencia de ejecución**:
 1. Ejecutar `make lint` (fmt + vet)
-2. Ejecutar `make test` con cobertura completa
-3. Verificar que la cobertura sea ≥80% (excluyendo mocks/fixtures de `/tests/`)
-4. Si hay errores de lint/format, repararlos automáticamente
-5. Si hay tests fallando, analizar y sugerir correcciones
-6. Re-ejecutar hasta que todos los checks pasen
-7. Generar reporte final con estadísticas de cobertura y calidad
+2. Ejecutar `make test`
+3. Si hay errores, mostrar resumen básico
+4. Si todo pasa, mostrar mensaje de éxito
 
 **Criterios de éxito**: 
-- Todos los tests pasan
-- Cobertura ≥80%
-- Sin errores de lint/format
-- Código compilable con `make build`
+- Comandos ejecutados sin errores fatales
+- Lint y tests básicos completados
 
-### build-agent
-**Comando**: `build-agent`
-**Propósito**: Agente de construcción y validación de binarios
+### build-simple
+**Comando**: `build-simple`
+**Propósito**: Construcción y validación básica de binarios
 
 **Secuencia de ejecución**:
-1. Ejecutar `qa-agent` primero (prerequisito)
+1. Ejecutar `qa-simple` primero (prerequisito)
 2. Ejecutar `make build` para compilar binario
 3. Verificar que el binario se crea correctamente en `bin/historiador`
 4. Probar comando básico: `./bin/historiador --help`
@@ -158,17 +154,17 @@ Los siguientes "agentes" están definidos como secuencias de comandos especializ
 7. Generar reporte de build con tamaño del binario y dependencias
 
 **Criterios de éxito**:
-- qa-agent pasa completamente
+- qa-simple pasa completamente
 - Binario generado sin errores
 - Comandos básicos funcionan
 - Instalación exitosa
 
-### release-agent [VERSION]
-**Comando**: `release-agent v1.2.3`
-**Propósito**: Agente de preparación completa de release
+### release-simple [VERSION]
+**Comando**: `release-simple v1.2.3`
+**Propósito**: Preparación básica de release
 
 **Secuencia de ejecución**:
-1. Ejecutar `build-agent` (incluye qa-agent)
+1. Ejecutar `build-simple` (incluye qa-simple)
 2. Verificar que la rama actual esté limpia (git status)
 3. Actualizar versión en archivos relevantes si existen
 4. Ejecutar suite completa de tests de aplicación:
@@ -181,76 +177,44 @@ Los siguientes "agentes" están definidos como secuencias de comandos especializ
 8. Mostrar resumen final para revisión antes de push
 
 **Criterios de éxito**:
-- build-agent pasa completamente
+- build-simple pasa completamente
 - Todos los comandos de aplicación funcionan
 - Tag git creado correctamente
 - CHANGELOG actualizado
 
-### coverage-agent [THRESHOLD]
-**Comando**: `coverage-agent 85`
-**Propósito**: Agente especializado en análisis de cobertura de tests
+### coverage-simple
+**Comando**: `coverage-simple`
+**Propósito**: Reporte básico de cobertura (solo comandos Go)
+**Equivalente AI**: Para análisis profundo usa `coverage-analyzer` (.claude/agents/)
 
 **Secuencia de ejecución**:
-1. Ejecutar `go test -v -race -cover ./... -coverprofile=coverage_clean.out -coverpkg=./internal/...` (excluye mocks/fixtures)
-2. Generar reporte HTML de cobertura: `go tool cover -html=coverage_clean.out -o coverage_clean.html`
-3. Analizar archivos con cobertura insuficiente (solo código de producción)
-4. Identificar funciones/métodos sin tests en lógica de negocio
-5. Sugerir tests específicos para áreas no cubiertas
-6. Si el threshold no se alcanza, crear TODOs específicos para mejorarlo
-7. Generar reporte detallado con métricas por paquete
-
-**Nota sobre exclusiones**:
-- Los mocks (`tests/mocks/`) se excluyen porque son código de testing, no de producción
-- Los fixtures (`tests/fixtures/`) se excluyen porque son datos de prueba helpers
-- Los CLI commands pueden tener cobertura baja ya que requieren tests de integración/E2E
-- Solo se mide cobertura de código en `./internal/...` (lógica de negocio)
+1. Ejecutar `go test -v -race -cover ./... -coverprofile=coverage.out -coverpkg=./internal/...`
+2. Ejecutar `go tool cover -func=coverage.out` (mostrar porcentajes)
+3. Generar HTML: `go tool cover -html=coverage.out -o coverage.html`
+4. Mostrar mensaje con ubicación del reporte HTML
 
 **Criterios de éxito**:
-- Cobertura total ≥ threshold especificado (default: 80%)
-- Reporte HTML generado
-- Identificación clara de gaps de testing
+- Tests ejecutados sin errores
+- Archivo coverage.html generado
+- Porcentaje total mostrado en consola
 
-### coverage-fix-agent [THRESHOLD]
-**Comando**: `coverage-fix-agent 85`
-**Propósito**: Agente que automáticamente mejora la cobertura de tests hasta alcanzar un porcentaje objetivo
+### test-simple
+**Comando**: `test-simple`
+**Propósito**: Ejecutar tests básicos con salida limpia
+**Equivalente AI**: Para análisis profundo usa `coverage-analyzer` y `coverage-fix` (.claude/agents/)
 
 **Secuencia de ejecución**:
-1. Ejecutar `coverage-agent` con el threshold especificado para baseline
-2. Si la cobertura ya alcanza el objetivo, reportar éxito y terminar
-3. Identificar funciones con mayor impacto potencial para mejora (ordenadas por importancia):
-   - Funciones de lógica de negocio (domain/application) con cobertura <90%
-   - Funciones de infraestructura crítica con cobertura <threshold
-   - Funciones con mayor cantidad de líneas sin cubrir
-4. Crear tests automáticamente siguiendo estos principios:
-   - Tests unitarios para funciones puras (domain entities)
-   - Tests con mocks para casos de uso (application layer)
-   - Tests de integración para infraestructura cuando sea necesario
-   - Seguir patrones existentes de testing del proyecto
-5. Ejecutar tests iterativamente y medir progreso
-6. Parar cuando se alcance el threshold o cuando no sea posible mejorar más
-7. Generar reporte final con cobertura alcanzada y tests agregados
-
-**Priorización para máximo impacto**:
-1. **Tests de aplicación**: Casos de uso con paths de error sin cubrir
-2. **Tests de dominio**: Entidades con métodos sin tests
-3. **Tests de infraestructura**: Clientes HTTP, validaciones, edge cases
-4. **Tests de integración CLI**: Solo si el impacto es significativo (>2% ganancia)
-
-**Comportamiento**:
-- **Automático**: Crea tests sin solicitar confirmación
-- **Iterativo**: Mide cobertura después de cada grupo de tests agregados  
-- **Inteligente**: Prioriza tests con mayor impacto en cobertura
-- **Conservador**: No modifica tests existentes, solo agrega nuevos
+1. Ejecutar `go test -v ./...`
+2. Si hay fallos, mostrar resumen de errores
+3. Si todos pasan, mostrar mensaje de éxito
 
 **Criterios de éxito**:
-- Cobertura total ≥ threshold especificado
-- Tests agregados siguen patrones existentes del proyecto
-- Todos los tests (nuevos y existentes) pasan
-- Reporte detallado de mejoras implementadas
+- Todos los tests pasan
+- Salida clara y legible
 
-### fix-agent [TIPO]
-**Comando**: `fix-agent lint` o `fix-agent tests` o `fix-agent all`
-**Propósito**: Agente de reparación automática de problemas comunes
+### fix-simple [TIPO]
+**Comando**: `fix-simple lint` o `fix-simple tests` o `fix-simple all`
+**Propósito**: Reparación automática básica de problemas comunes
 
 **Secuencia de ejecución**:
 Para `lint`:
@@ -287,16 +251,39 @@ Para `all`:
 
 ## Uso de Agentes
 
+### Tabla de Comandos y Agentes Disponibles
+
+| Comando | Ubicación | Tipo | Cuándo usar |
+|---------|-----------|------|-------------|
+| `qa-simple` | CLAUDE.md | Simple | Tests rápidos, CI/CD |
+| `qa-analyzer` | .claude/agents/ | Agente AI | Análisis profundo, pre-PR |
+| `test-simple` | CLAUDE.md | Simple | Ejecutar tests básicos |
+| `coverage-simple` | CLAUDE.md | Simple | Reporte cobertura básico |
+| `coverage-analyzer` | .claude/agents/ | Agente AI | Análisis cobertura profundo |
+| `coverage-fix` | .claude/agents/ | Agente AI | Mejora automática cobertura |
+| `security-scan-agent` | .claude/agents/ | Agente AI | Security analysis |
+| `peer-review-agent` | .claude/agents/ | Agente AI | Code review completo |
+| `build-simple` | CLAUDE.md | Simple | Build + validación |
+| `release-simple` | CLAUDE.md | Simple | Release workflow |
+| `fix-simple` | CLAUDE.md | Simple | Fixes automáticos |
+
 Para usar cualquier agente, simplemente escribir su nombre como comando:
 
 ```bash
-# Ejemplos de uso
-qa-agent
-build-agent  
-release-agent v1.5.0
-coverage-agent 85
-coverage-fix-agent 85
-fix-agent all
+# Ejemplos de uso comandos simples
+qa-simple
+test-simple
+coverage-simple
+build-simple  
+release-simple v1.5.0
+fix-simple all
+
+# Ejemplos de uso agentes AI
+qa-analyzer
+coverage-analyzer 85
+coverage-fix 90
+security-scan-agent
+peer-review-agent
 ```
 
 Los agentes son ejecutados secuencialmente y reportan progreso usando el sistema TodoWrite para tracking de tareas.
